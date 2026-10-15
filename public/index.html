@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AURA - Listen to your heart and mood</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--theme-primary, #FF6B00)',
+                        darkBg: '#09090b',
+                        cardBg: '#121214',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Alpine.js for zero-build reactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #09090b; color: #f4f4f5; margin: 0; padding: 0; overflow-x: hidden; }
+        .glass-panel { background: rgba(18, 18, 20, 0.75); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .glass-player { background: rgba(20, 20, 25, 0.85); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+        
+        /* Cross-browser vertical slider styling */
+        .eq-slider-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .eq-slider {
+            width: 90px;
+            height: 4px;
+            transform: rotate(-90deg);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body x-data="auraApp()" :style="`--theme-primary: ${themeColor}`">
+
+    <!-- GLOBAL DYNAMIC BACKGROUND WALLPAPER -->
+    <div class="fixed inset-0 bg-cover bg-center filter blur-3xl opacity-40 scale-125 pointer-events-none z-0 transition-all duration-500" :style="`background-image: url('${bgBlurImage}')`"></div>
+    <div class="fixed inset-0 bg-darkBg/75 pointer-events-none z-0"></div>
+
+    <!-- LOGIN & REGISTER SCREEN -->
+    <template x-if="!isLoggedIn">
+        <div class="relative min-h-screen flex items-center justify-center p-6 overflow-hidden z-10">
+            <div class="relative z-10 w-full max-w-md glass-panel p-8 rounded-3xl shadow-2xl border border-white/10">
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary to-orange-400 mb-4 shadow-lg shadow-primary/30 text-white font-bold text-2xl">
+                        ♫
+                    </div>
+                    <h1 class="text-3xl font-bold tracking-tight text-white" x-text="isRegistering ? 'Create Account' : 'Welcome Back'"></h1>
+                    <p class="text-sm text-zinc-400 mt-1 italic">"listen to your heart and mood"</p>
+                </div>
+
+                <form @submit.prevent="handleAuth()" class="space-y-4">
+                    <div>
+                        <label class="text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1 block">Username / Email</label>
+                        <input type="text" required x-model.trim="authEmail" placeholder="admin or name@example.com" 
+                            class="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition" />
+                    </div>
+                    <div>
+                        <label class="text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1 block">Password</label>
+                        <input type="password" required x-model.trim="authPass" placeholder="••••••••" 
+                            class="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition" />
+                    </div>
+                    
+                    <button type="submit" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-primary to-orange-500 font-semibold text-white shadow-lg shadow-primary/30 hover:opacity-95 transition" 
+                        x-text="isRegistering ? 'Register Account' : 'Sign In'">
+                    </button>
+
+                    <div class="text-center pt-2">
+                        <button type="button" @click="isRegistering = !isRegistering" class="text-xs text-zinc-400 hover:text-primary transition" 
+                            x-text="isRegistering ? 'Already have an account? Sign In' : 'Don\'t have an account? Sign Up'">
+                        </button>
+                    </div>
+                </form>
+
+                <div class="mt-6 pt-4 border-t border-zinc-800/80 text-center">
+                    <p class="text-xs text-zinc-500">Quick Testing Credentials: <span class="text-zinc-300 font-mono">admin</span> / <span class="text-zinc-300 font-mono">admin</span></p>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- MAIN APP SCREEN -->
+    <template x-if="isLoggedIn">
+        <div class="relative min-h-screen pb-28 text-zinc-100 flex flex-col z-10">
+            <!-- Top Header -->
+            <header class="relative z-10 flex items-center justify-between px-6 py-4 border-b border-zinc-800/60 glass-panel sticky top-0">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-orange-400 flex items-center justify-center shadow-md shadow-primary/20 text-white font-bold">
+                        ♫
+                    </div>
+                    <span class="font-bold text-xl tracking-wider text-white">AURA</span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button @click="currentTab = 'profile'" aria-label="Open profile" class="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center hover:border-primary transition">
+                        <img :src="profilePicUrl" alt="User avatar" class="w-full h-full object-cover" />
+                    </button>
+                    <button @click="currentTab = 'settings'" aria-label="Open settings" class="w-10 h-10 rounded-full bg-zinc-800/80 border border-zinc-700 flex items-center justify-center text-zinc-300 hover:text-white transition">
+                        ⚙️
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dynamic Views -->
+            <main class="relative z-10 flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 overflow-y-auto">
+                
+                <!-- HOME TAB -->
+                <div x-show="currentTab === 'home'" class="space-y-6">
+                    <div>
+                        <h2 class="text-2xl font-bold tracking-tight text-white mb-1" x-text="`Good evening, ${authEmail}`"></h2>
+                        <p class="text-sm text-zinc-400 italic">"listen to your heart and mood"</p>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">❤️ Favorites</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <template x-for="track in tracks.slice(0, 4)" :key="track.id">
+                                <div @click="play(track)" class="bg-zinc-900/60 p-3 rounded-2xl border border-zinc-800 hover:border-primary/50 transition cursor-pointer group">
+                                    <div class="relative aspect-square rounded-xl overflow-hidden mb-2">
+                                        <img :src="track.coverUrl" :alt="track.title + ' cover'" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                                        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                            <div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center shadow-lg text-white font-bold">▶</div>
+                                        </div>
+                                    </div>
+                                    <h4 class="font-semibold text-sm truncate text-white" x-text="track.title"></h4>
+                                    <p class="text-xs text-zinc-400 truncate" x-text="track.artist"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">Recently Played</h3>
+                        <div class="flex space-x-4 overflow-x-auto pb-2">
+                            <template x-for="track in tracks" :key="'rec-'+track.id">
+                                <div @click="play(track)" class="flex-shrink-0 w-36 cursor-pointer group">
+                                    <div class="relative w-36 h-36 rounded-2xl overflow-hidden mb-2">
+                                        <img :src="track.coverUrl" :alt="track.title + ' cover'" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                                    </div>
+                                    <h4 class="font-medium text-sm truncate text-white" x-text="track.title"></h4>
+                                    <p class="text-xs text-zinc-400 truncate" x-text="track.artist"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SEARCH TAB -->
+                <div x-show="currentTab === 'search'" class="space-y-6" style="display: none;">
+                    <div class="relative">
+                        <input type="text" placeholder="Search artists, songs, or podcasts..." 
+                            class="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-white placeholder-zinc-500 focus:outline-none focus:border-primary transition" />
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-3">Browse Categories</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <template x-for="cat in ['Pop', 'Hip-Hop', 'Electronic', 'Indie', 'Workout', 'Chill']" :key="cat">
+                                <div class="h-24 rounded-2xl p-4 bg-gradient-to-br from-zinc-800 to-zinc-900 border border-zinc-800 flex items-end font-bold text-lg text-white cursor-pointer hover:border-primary transition" x-text="cat"></div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LIBRARY TAB -->
+                <div x-show="currentTab === 'library'" class="space-y-4" style="display: none;">
+                    <h2 class="text-2xl font-bold">Your Library</h2>
+                    <div class="space-y-2">
+                        <template x-for="track in tracks" :key="'lib-'+track.id">
+                            <div @click="play(track)" class="flex items-center justify-between p-3 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 hover:border-primary/50 cursor-pointer transition">
+                                <div class="flex items-center space-x-3">
+                                    <img :src="track.coverUrl" :alt="track.title + ' cover'" class="w-12 h-12 rounded-xl object-cover" />
+                                    <div>
+                                        <h4 class="font-semibold text-sm text-white" x-text="track.title"></h4>
+                                        <p class="text-xs text-zinc-400" x-text="track.artist"></p>
+                                    </div>
+                                </div>
+                                <span class="text-xs text-primary bg-primary/10 px-2.5 py-1 rounded-full font-medium" x-text="track.duration"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- FM TAB -->
+                <div x-show="currentTab === 'fm'" class="text-center py-12 space-y-4" style="display: none;">
+                    <div class="w-20 h-20 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mx-auto text-primary text-2xl animate-pulse">📻</div>
+                    <h2 class="text-2xl font-bold">AURA Live Stations</h2>
+                    <p class="text-zinc-400 max-w-xs mx-auto text-sm">Tune into endless lossless radio stations curated around your current heart rate and mood.</p>
+                </div>
+
+                <!-- PROFILE TAB -->
+                <div x-show="currentTab === 'profile'" class="space-y-6" style="display: none;">
+                    <div class="flex items-center space-x-4 glass-panel p-6 rounded-3xl">
+                        <!-- Profile Avatar with Pencil Icon Overlay -->
+                        <div class="relative group cursor-pointer" @click="promptProfilePicUpdate()">
+                            <img :src="profilePicUrl" alt="Current profile picture" class="w-20 h-20 rounded-2xl object-cover border-2 border-primary" />
+                            <div class="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                                <span class="text-white text-lg">✏️</span>
+                            </div>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-bold text-white" x-text="authEmail"></h2>
+                            <p class="text-sm text-zinc-400">Premium Lossless Tier</p>
+                            <button @click="isLoggedIn = false" class="mt-3 text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1 rounded-xl font-semibold">Sign Out</button>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 rounded-3xl space-y-4">
+                        <h3 class="text-lg font-semibold">Service Integrations</h3>
+                        
+                        <div class="flex items-center justify-between py-2 border-b border-zinc-800">
+                            <div>
+                                <h4 class="font-medium text-sm">Spotify Free API</h4>
+                                <p class="text-xs text-zinc-400">Sync library & metadata</p>
+                            </div>
+                            <button @click="spotifyConnected = !spotifyConnected" :class="spotifyConnected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-primary text-white'" class="px-4 py-2 rounded-xl text-xs font-semibold transition" x-text="spotifyConnected ? 'Connected' : 'Connect Spotify'"></button>
+                        </div>
+
+                        <div class="space-y-3 pt-2">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h4 class="font-medium text-sm">JioSaavn Lossless Engine</h4>
+                                    <p class="text-xs text-zinc-400">Use user credentials for priority FLAC or fallback</p>
+                                </div>
+                                <span class="text-xs px-2.5 py-1 rounded-full font-medium" :class="jioSaavnConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'" x-text="jioSaavnConnected ? 'Active Account' : 'Unofficial API Bypass'"></span>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input type="text" x-model.trim="jioUser" placeholder="JioSaavn Username / Email" 
+                                    class="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary" />
+                                <input type="password" x-model.trim="jioPass" placeholder="Password / Auth Cookie" 
+                                    class="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary" />
+                            </div>
+                            <button @click="saveJioSaavnCredentials()" class="w-full py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-xs font-semibold text-white transition border border-zinc-700">
+                                Save JioSaavn Credentials
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SETTINGS TAB -->
+                <div x-show="currentTab === 'settings'" class="space-y-6" style="display: none;">
+                    <h2 class="text-2xl font-bold">Settings</h2>
+
+                    <!-- Theme & Customization -->
+                    <div class="glass-panel p-6 rounded-3xl space-y-4">
+                        <h3 class="text-lg font-semibold flex items-center gap-2">🎨 Theme Customizer</h3>
+                        <div>
+                            <label class="text-xs text-zinc-400 block mb-2">Accent Color Palette</label>
+                            <div class="flex space-x-3 items-center">
+                                <template x-for="col in ['#FF6B00', '#8B5CF6', '#06B6D4', '#10B981', '#EC4899']" :key="col">
+                                    <button @click="themeColor = col" :class="themeColor === col ? 'border-white scale-110' : 'border-transparent'" class="w-10 h-10 rounded-full border-2 transition" :style="`background-color: ${col}`"></button>
+                                </template>
+                                <input type="color" x-model="themeColor" class="w-10 h-10 rounded-full bg-transparent cursor-pointer border-0" title="Custom color picker" />
+                            </div>
+                        </div>
+
+                        <!-- Background Blur Wallpaper with Visual Preview Square -->
+                        <div class="pt-2">
+                            <label class="text-xs text-zinc-400 block mb-2">Background Blur Wallpaper</label>
+                            <div class="flex items-center space-x-4">
+                                <div class="relative group cursor-pointer w-20 h-20 rounded-2xl overflow-hidden border-2 border-zinc-700 hover:border-primary transition flex-shrink-0 shadow-lg" @click="promptBgBlurUpdate()">
+                                    <img :src="bgBlurImage" alt="Background preview" class="w-full h-full object-cover filter blur-[2px]" />
+                                    <div class="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                                        <span class="text-white text-base">✏️</span>
+                                    </div>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-xs text-zinc-300 font-medium">Click square to edit background wallpaper</p>
+                                    <p class="text-[11px] text-zinc-500 truncate mt-0.5" x-text="bgBlurImage"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio Settings -->
+                    <div class="glass-panel p-6 rounded-3xl space-y-4">
+                        <h3 class="text-lg font-semibold flex items-center gap-2">🎛️ Audio Settings</h3>
+                        
+                        <div class="flex justify-between items-center py-2 border-b border-zinc-800">
+                            <div><h4 class="text-sm font-medium">Audio Quality</h4><p class="text-xs text-zinc-400">Stream resolution priority</p></div>
+                            <select x-model="audioQuality" class="bg-zinc-900 border border-zinc-800 text-xs rounded-xl px-3 py-2 text-white focus:outline-none">
+                                <option>Lossless (FLAC / 320kbps)</option>
+                                <option>High (256kbps)</option>
+                                <option>Normal (160kbps)</option>
+                            </select>
+                        </div>
+
+                        <div class="flex justify-between items-center py-2 border-b border-zinc-800">
+                            <div><h4 class="text-sm font-medium">Spatial Audio</h4><p class="text-xs text-zinc-400">Immersive soundstage</p></div>
+                            <select x-model="spatialAudio" class="bg-zinc-900 border border-zinc-800 text-xs rounded-xl px-3 py-2 text-white focus:outline-none">
+                                <option>Dolby Atmos</option>
+                                <option>Head Tracking</option>
+                                <option>Off</option>
+                            </select>
+                        </div>
+
+                        <div class="flex justify-between items-center py-2 border-b border-zinc-800">
+                            <div><h4 class="text-sm font-medium">Crossfade</h4><p class="text-xs text-zinc-400">Overlap track transitions</p></div>
+                            <span class="text-xs font-bold text-primary" x-text="crossfade + 's'"></span>
+                        </div>
+
+                        <!-- Equalizer Section with Custom Sliders -->
+                        <div class="pt-2 space-y-3">
+                            <div class="flex justify-between items-center">
+                                <div><h4 class="text-sm font-medium">Equalizer Preset & Bands</h4><p class="text-xs text-zinc-400">Frequency fine-tuning</p></div>
+                                <select x-model="equalizerPreset" class="bg-zinc-900 border border-zinc-800 text-xs rounded-xl px-3 py-2 text-white focus:outline-none">
+                                    <option>Custom</option>
+                                    <option>Electronic</option>
+                                    <option>Bass Booster</option>
+                                    <option>Acoustic</option>
+                                    <option>Flat</option>
+                                </select>
+                            </div>
+
+                            <!-- Custom Frequency Sliders -->
+                            <div class="bg-zinc-900/60 p-4 rounded-2xl border border-zinc-800 space-y-3">
+                                <div class="grid grid-cols-5 gap-2 text-center">
+                                    <div>
+                                        <div class="eq-slider-wrapper">
+                                            <input type="range" min="-12" max="12" x-model.number="eqBands.b60" class="eq-slider accent-primary" />
+                                        </div>
+                                        <span class="text-[10px] text-zinc-400 block mt-1">60Hz</span>
+                                        <span class="text-[9px] text-zinc-500 block font-mono" x-text="eqBands.b60 + 'dB'"></span>
+                                    </div>
+                                    <div>
+                                        <div class="eq-slider-wrapper">
+                                            <input type="range" min="-12" max="12" x-model.number="eqBands.b230" class="eq-slider accent-primary" />
+                                        </div>
+                                        <span class="text-[10px] text-zinc-400 block mt-1">230Hz</span>
+                                        <span class="text-[9px] text-zinc-500 block font-mono" x-text="eqBands.b230 + 'dB'"></span>
+                                    </div>
+                                    <div>
+                                        <div class="eq-slider-wrapper">
+                                            <input type="range" min="-12" max="12" x-model.number="eqBands.b910" class="eq-slider accent-primary" />
+                                        </div>
+                                        <span class="text-[10px] text-zinc-400 block mt-1">910Hz</span>
+                                        <span class="text-[9px] text-zinc-500 block font-mono" x-text="eqBands.b910 + 'dB'"></span>
+                                    </div>
+                                    <div>
+                                        <div class="eq-slider-wrapper">
+                                            <input type="range" min="-12" max="12" x-model.number="eqBands.b4k" class="eq-slider accent-primary" />
+                                        </div>
+                                        <span class="text-[10px] text-zinc-400 block mt-1">4kHz</span>
+                                        <span class="text-[9px] text-zinc-500 block font-mono" x-text="eqBands.b4k + 'dB'"></span>
+                                    </div>
+                                    <div>
+                                        <div class="eq-slider-wrapper">
+                                            <input type="range" min="-12" max="12" x-model.number="eqBands.b14k" class="eq-slider accent-primary" />
+                                        </div>
+                                        <span class="text-[10px] text-zinc-400 block mt-1">14kHz</span>
+                                        <span class="text-[9px] text-zinc-500 block font-mono" x-text="eqBands.b14k + 'dB'"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Download & Offline Storage -->
+                    <div class="glass-panel p-6 rounded-3xl space-y-4">
+                        <h3 class="text-lg font-semibold flex items-center gap-2">📥 Download Options</h3>
+                        
+                        <div class="flex justify-between items-center py-2 border-b border-zinc-800">
+                            <div><h4 class="text-sm font-medium">Download Quality</h4><p class="text-xs text-zinc-400">Offline FLAC caching</p></div>
+                            <select x-model="downloadQuality" class="bg-zinc-900 border border-zinc-800 text-xs rounded-xl px-3 py-2 text-white focus:outline-none">
+                                <option>Lossless</option>
+                                <option>High</option>
+                            </select>
+                        </div>
+
+                        <div class="flex justify-between items-center py-2">
+                            <div><h4 class="text-sm font-medium">Offline Storage</h4><p class="text-xs text-zinc-400" x-text="'Used: ' + offlineStorageUsed"></p></div>
+                            <button @click="alert('Offline cache cleared successfully!')" class="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl text-xs font-semibold">Clear Cache</button>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+
+            <!-- Mini Player -->
+            <template x-if="currentTrack && !isFullPlayerOpen">
+                <div @click="isFullPlayerOpen = true" class="fixed bottom-16 left-4 right-4 max-w-4xl mx-auto glass-player p-3 rounded-2xl border border-white/10 shadow-2xl flex items-center justify-between cursor-pointer z-40">
+                    <div class="flex items-center space-x-3">
+                        <img :src="currentTrack.coverUrl" :alt="currentTrack.title + ' cover'" class="w-12 h-12 rounded-xl object-cover shadow" />
+                        <div>
+                            <h4 class="font-semibold text-sm text-white truncate" x-text="currentTrack.title"></h4>
+                            <p class="text-xs text-zinc-400 truncate" x-text="currentTrack.artist"></p>
+                        </div>
+                    </div>
+                    <button @click.stop="isPlaying = !isPlaying" class="w-10 h-10 rounded-full bg-white text-darkBg flex items-center justify-center font-bold" x-text="isPlaying ? '⏸' : '▶'"></button>
+                </div>
+            </template>
+
+            <!-- Full Glassmorphism Player -->
+            <template x-if="isFullPlayerOpen && currentTrack">
+                <div class="fixed inset-0 z-50 flex flex-col justify-between p-6 sm:p-12 overflow-hidden bg-darkBg/95">
+                    <div class="absolute inset-0 bg-cover bg-center filter blur-3xl opacity-70 scale-125" :style="`background-image: url('${currentTrack.coverUrl}')`"></div>
+                    <div class="absolute inset-0 bg-gradient-to-b from-darkBg/60 via-darkBg/80 to-darkBg"></div>
+
+                    <div class="relative z-10 flex items-center justify-between">
+                        <button @click="isFullPlayerOpen = false" class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/20">↓</button>
+                        <div class="text-center">
+                            <span class="text-xs font-semibold uppercase tracking-widest" :style="`color: ${themeColor}`">Now Playing</span>
+                            <p class="text-xs text-zinc-300" x-text="currentTrack.album"></p>
+                        </div>
+                        <div class="w-10"></div>
+                    </div>
+
+                    <div class="relative z-10 my-auto max-w-sm mx-auto w-full space-y-6 text-center">
+                        <div class="aspect-square rounded-3xl overflow-hidden shadow-2xl border border-white/20">
+                            <img :src="currentTrack.coverUrl" :alt="currentTrack.title + ' cover'" class="w-full h-full object-cover" />
+                        </div>
+                        <div class="flex justify-between items-end text-left px-1">
+                            <div>
+                                <h2 class="text-2xl font-bold text-white" x-text="currentTrack.title"></h2>
+                                <p class="text-base text-zinc-300" x-text="currentTrack.artist"></p>
+                            </div>
+                            <span class="text-xs bg-primary/20 text-primary border border-primary/30 px-3 py-1 rounded-full font-semibold" x-text="currentTrack.source"></span>
+                        </div>
+                        <div class="flex items-center justify-between px-6 pt-4">
+                            <button @click="isPlaying = !isPlaying" class="w-20 h-20 rounded-full bg-white text-darkBg mx-auto flex items-center justify-center shadow-xl text-2xl font-bold" x-text="isPlaying ? '⏸' : '▶'"></button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Bottom Navigation -->
+            <nav class="fixed bottom-0 left-0 right-0 glass-panel border-t border-zinc-800 px-6 py-3 flex justify-around items-center z-30">
+                <template x-for="tab in [{id: 'home', label: 'Home', icon: '🏠'}, {id: 'search', label: 'Search', icon: '🔍'}, {id: 'library', label: 'Library', icon: '📚'}, {id: 'fm', label: 'FM', icon: '📻'}]" :key="tab.id">
+                    <button @click="currentTab = tab.id" :class="currentTab === tab.id ? 'text-primary font-bold' : 'text-zinc-400'" class="flex flex-col items-center space-y-1 transition">
+                        <span class="text-lg" x-text="tab.icon"></span>
+                        <span class="text-[10px]" x-text="tab.label"></span>
+                    </button>
+                </template>
+            </nav>
+        </div>
+    </template>
+
+    <script>
+        function auraApp() {
+            return {
+                isLoggedIn: false,
+                isRegistering: false,
+                authEmail: 'admin',
+                authPass: 'admin',
+                currentTab: 'home',
+                currentTrack: null,
+                isPlaying: false,
+                isFullPlayerOpen: false,
+                
+                // Theme & Customization
+                themeColor: '#FF6B00',
+                bgBlurImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80',
+                profilePicUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+                
+                // Integrations
+                spotifyConnected: false,
+                jioSaavnConnected: false,
+                jioUser: '',
+                jioPass: '',
+
+                // Audio & Equalizer Settings
+                audioQuality: 'Lossless (FLAC / 320kbps)',
+                spatialAudio: 'Dolby Atmos',
+                crossfade: 3,
+                equalizerPreset: 'Custom',
+                eqBands: { b60: 4, b230: 2, b910: 0, b4k: 3, b14k: 5 },
+                downloadQuality: 'Lossless',
+                offlineStorageUsed: '4.2 GB',
+
+                tracks: [
+                    { id: '1', title: 'Starboy', artist: 'The Weeknd, Daft Punk', album: 'Starboy', coverUrl: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&auto=format&fit=crop&q=80', duration: '3:50', source: 'JioSaavn (Lossless / 320kbps)' },
+                    { id: '2', title: 'Midnight City', artist: 'M83', album: 'Hurry Up, We\'re Dreaming', coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80', duration: '4:03', source: 'YouTube Music (Opus 160kbps)' },
+                    { id: '3', title: 'Resonance', artist: 'HOME', album: 'Odyssey', coverUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80', duration: '3:32', source: 'Internet Archive (True FLAC)' },
+                    { id: '4', title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80', duration: '3:20', source: 'JioSaavn (Lossless / 320kbps)' }
+                ],
+                handleAuth() {
+                    if (this.authEmail && this.authPass) {
+                        this.isLoggedIn = true;
+                    }
+                },
+                saveJioSaavnCredentials() {
+                    if (this.jioUser && this.jioPass) {
+                        this.jioSaavnConnected = true;
+                        alert('JioSaavn credentials saved successfully!');
+                    } else {
+                        alert('Please provide both username and password/cookie.');
+                    }
+                },
+                promptProfilePicUpdate() {
+                    const newUrl = prompt('Enter new profile picture image URL:', this.profilePicUrl);
+                    if (newUrl && newUrl.trim() !== '') {
+                        this.profilePicUrl = newUrl.trim();
+                    }
+                },
+                promptBgBlurUpdate() {
+                    const newUrl = prompt('Enter new background blur wallpaper image URL:', this.bgBlurImage);
+                    if (newUrl && newUrl.trim() !== '') {
+                        this.bgBlurImage = newUrl.trim();
+                    }
+                },
+                play(track) {
+                    this.currentTrack = track;
+                    this.isPlaying = true;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
