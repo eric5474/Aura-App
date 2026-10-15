@@ -227,7 +227,7 @@
                                 <h4 class="font-medium text-sm">Spotify Free API</h4>
                                 <p class="text-xs text-zinc-400">Sync library & metadata</p>
                             </div>
-                            <button @click="spotifyConnected = !spotifyConnected" :class="spotifyConnected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-primary text-white'" class="px-4 py-2 rounded-xl text-xs font-semibold transition" x-text="spotifyConnected ? 'Connected' : 'Connect Spotify'"></button>
+                            <button @click="connectSpotify()" :class="spotifyConnected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-primary text-white'" class="px-4 py-2 rounded-xl text-xs font-semibold transition" x-text="spotifyConnected ? 'Connected' : 'Connect Spotify'"></button>
                         </div>
 
                         <div class="space-y-3 pt-2">
@@ -400,7 +400,7 @@
                             <p class="text-xs text-zinc-400 truncate" x-text="currentTrack.artist"></p>
                         </div>
                     </div>
-                    <button @click.stop="isPlaying = !isPlaying" class="w-10 h-10 rounded-full bg-white text-darkBg flex items-center justify-center font-bold" x-text="isPlaying ? '⏸' : '▶'"></button>
+                    <button @click.stop="togglePlay()" class="w-10 h-10 rounded-full bg-white text-darkBg flex items-center justify-center font-bold" x-text="isLoading ? '⏳' : (isPlaying ? '⏸' : '▶')"></button>
                 </div>
             </template>
 
@@ -431,7 +431,7 @@
                             <span class="text-xs bg-primary/20 text-primary border border-primary/30 px-3 py-1 rounded-full font-semibold" x-text="currentTrack.source"></span>
                         </div>
                         <div class="flex items-center justify-between px-6 pt-4">
-                            <button @click="isPlaying = !isPlaying" class="w-20 h-20 rounded-full bg-white text-darkBg mx-auto flex items-center justify-center shadow-xl text-2xl font-bold" x-text="isPlaying ? '⏸' : '▶'"></button>
+                            <button @click="togglePlay()" class="w-20 h-20 rounded-full bg-white text-darkBg mx-auto flex items-center justify-center shadow-xl text-2xl font-bold" x-text="isLoading ? '⏳' : (isPlaying ? '⏸' : '▶')"></button>
                         </div>
                     </div>
                 </div>
@@ -459,20 +459,20 @@
                 currentTab: 'home',
                 currentTrack: null,
                 isPlaying: false,
+                isLoading: false, 
                 isFullPlayerOpen: false,
                 
-                // Theme & Customization
+                audioPlayer: new Audio(),
+                
                 themeColor: '#FF6B00',
                 bgBlurImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80',
                 profilePicUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
                 
-                // Integrations
                 spotifyConnected: false,
                 jioSaavnConnected: false,
                 jioUser: '',
                 jioPass: '',
 
-                // Audio & Equalizer Settings
                 audioQuality: 'Lossless (FLAC / 320kbps)',
                 spatialAudio: 'Dolby Atmos',
                 crossfade: 3,
@@ -482,23 +482,107 @@
                 offlineStorageUsed: '4.2 GB',
 
                 tracks: [
-                    { id: '1', title: 'Starboy', artist: 'The Weeknd, Daft Punk', album: 'Starboy', coverUrl: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&auto=format&fit=crop&q=80', duration: '3:50', source: 'JioSaavn (Lossless / 320kbps)' },
-                    { id: '2', title: 'Midnight City', artist: 'M83', album: 'Hurry Up, We\'re Dreaming', coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80', duration: '4:03', source: 'YouTube Music (Opus 160kbps)' },
-                    { id: '3', title: 'Resonance', artist: 'HOME', album: 'Odyssey', coverUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80', duration: '3:32', source: 'Internet Archive (True FLAC)' },
-                    { id: '4', title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80', duration: '3:20', source: 'JioSaavn (Lossless / 320kbps)' }
+                    { id: '1', title: 'Starboy', artist: 'The Weeknd', album: 'Starboy', coverUrl: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&auto=format&fit=crop&q=80', duration: '3:50', source: 'Searching...' },
+                    { id: '2', title: 'Midnight City', artist: 'M83', album: 'Hurry Up, We\'re Dreaming', coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80', duration: '4:03', source: 'Searching...' },
+                    { id: '3', title: 'Resonance', artist: 'HOME', album: 'Odyssey', coverUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80', duration: '3:32', source: 'Searching...' }
                 ],
-                handleAuth() {
-                    if (this.authEmail && this.authPass) {
-                        this.isLoggedIn = true;
+                
+                init() {
+                    // Check if Spotify redirected back
+                    if (window.location.hash.includes('access_token')) {
+                        this.spotifyConnected = true;
+                        window.history.pushState("", document.title, window.location.pathname);
+                    }
+                    this.audioPlayer.addEventListener('ended', () => {
+                        this.isPlaying = false;
+                    });
+                },
+
+                // 1. UPDATED AUTHENTICATION
+                async handleAuth() {
+                    if (!this.authEmail || !this.authPass) return;
+                    
+                    try {
+                        const endpoint = this.isRegistering ? '/api/auth/signup' : '/api/auth/login';
+                        // Fetching relative to the domain (works locally and on Render)
+                        const res = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: this.authEmail, password: this.authPass })
+                        });
+                        
+                        const data = await res.json();
+                        if (data.success) {
+                            // Save the backend JWT token to localStorage
+                            localStorage.setItem('aura_token', data.token);
+                            this.isLoggedIn = true;
+                        } else {
+                            alert(data.error || 'Authentication failed');
+                        }
+                    } catch (e) {
+                        alert('Could not connect to the backend server.');
                     }
                 },
-                saveJioSaavnCredentials() {
-                    if (this.jioUser && this.jioPass) {
-                        this.jioSaavnConnected = true;
-                        alert('JioSaavn credentials saved successfully!');
-                    } else {
-                        alert('Please provide both username and password/cookie.');
+
+                // 2. UPDATED PLAYBACK WITH BACKEND RESOLVER
+                async play(track) {
+                    if (this.currentTrack && this.currentTrack.id === track.id) {
+                        this.togglePlay();
+                        return;
                     }
+                    
+                    this.currentTrack = track;
+                    this.isPlaying = false;
+                    this.isLoading = true;
+                    this.currentTrack.source = 'Scraping audio...';
+
+                    try {
+                        const token = localStorage.getItem('aura_token');
+                        // Make request to your waterfall resolver
+                        const res = await fetch(`/api/resolve-stream?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        
+                        const data = await res.json();
+                        
+                        if (data.success && data.streamUrl) {
+                            this.currentTrack.source = data.source; // Displays "JioSaavn", "YouTube", etc.
+                            this.audioPlayer.src = data.streamUrl;
+                            this.audioPlayer.play();
+                            this.isPlaying = true;
+                        } else {
+                            this.currentTrack.source = 'Stream not found';
+                            alert('Could not resolve a free stream for this track.');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.currentTrack.source = 'Error connecting';
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+                
+                togglePlay() {
+                    if (!this.currentTrack || this.isLoading) return;
+                    
+                    if (this.isPlaying) {
+                        this.audioPlayer.pause();
+                        this.isPlaying = false;
+                    } else {
+                        this.audioPlayer.play();
+                        this.isPlaying = true;
+                    }
+                },
+                
+                connectSpotify() {
+                    const clientId = 'YOUR_SPOTIFY_CLIENT_ID_HERE'; 
+                    const redirectUri = window.location.href.split('#')[0]; 
+                    const scopes = 'user-read-private user-library-read';
+                    const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}`;
+                    window.location.href = authUrl;
+                },
+                saveJioSaavnCredentials() {
+                    alert('JioSaavn backend auth coming next!');
                 },
                 promptProfilePicUpdate() {
                     const newUrl = prompt('Enter new profile picture image URL:', this.profilePicUrl);
@@ -511,10 +595,6 @@
                     if (newUrl && newUrl.trim() !== '') {
                         this.bgBlurImage = newUrl.trim();
                     }
-                },
-                play(track) {
-                    this.currentTrack = track;
-                    this.isPlaying = true;
                 }
             }
         }
