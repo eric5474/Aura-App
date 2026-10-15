@@ -2,104 +2,514 @@
 <html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AURA - Functional Player</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AURA - Listen to your heart and mood</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-</head>
-<body x-data="auraApp()" :style="--theme-primary: ${themeColor}" class="bg-darkBg text-zinc-100">
-
     <script>
-        function auraApp() {
-            return {
-                isLoggedIn: true, // Set to true for testing
-                currentTrack: null,
-                isPlaying: false,
-                isLoading: false,
-                currentTime: 0,
-                duration: 0,
-                progress: 0,
-                audioPlayer: new Audio(),
-                themeColor: '#FF6B00',
-                tracks: [
-                    { id: '1', title: 'Test Audio', artist: 'System', coverUrl: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300', streamUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' }
-                ],
-
-                init() {
-                    this.audioPlayer.addEventListener('timeupdate', () => {
-                        this.currentTime = this.audioPlayer.currentTime;
-                        this.duration = this.audioPlayer.duration || 0;
-                        this.progress = (this.currentTime / this.duration) * 100 || 0;
-                    });
-
-                    this.audioPlayer.addEventListener('play', () => { this.isPlaying = true; });
-                    this.audioPlayer.addEventListener('pause', () => { this.isPlaying = false; });
-                    this.audioPlayer.addEventListener('ended', () => { this.isPlaying = false; });
-                    this.audioPlayer.addEventListener('error', (e) => {
-                        console.error("Audio Error:", e);
-                        this.isLoading = false;
-                        alert("Error loading audio stream.");
-                    });
-                },
-
-                async play(track) {
-                    if (this.currentTrack && this.currentTrack.id === track.id) {
-                        return this.togglePlay();
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--theme-primary, #1DB954)',
+                        darkBg: '#121212',
+                        cardBg: '#18181b',
+                        surface: '#242424'
                     }
-
-                    this.currentTrack = track;
-                    this.isLoading = true;
-
-                    // 1. Logic for fetching stream (Replace with your API call)
-                    // For testing, we use the hardcoded streamUrl in the object
-                    const streamUrl = track.streamUrl; 
-
-                    this.audioPlayer.src = streamUrl;
-                    this.audioPlayer.load();
-
-                    try {
-                        await this.audioPlayer.play();
-                        this.isLoading = false;
-                    } catch (err) {
-                        console.error("Playback failed:", err);
-                        this.isLoading = false;
-                        // Attempt a user-triggered play if autoplay is blocked
-                        alert("Click to start playback");
-                    }
-                },
-
-                togglePlay() {
-                    if (this.audioPlayer.paused) {
-                        this.audioPlayer.play().catch(e => console.log(e));
-                    } else {
-                        this.audioPlayer.pause();
-                    }
-                },
-
-                formatTime(seconds) {
-                    const m = Math.floor(seconds / 60);
-                    const s = Math.floor(seconds % 60);
-                    return ${m}:${s < 10 ? '0' : ''}${s};
                 }
             }
         }
     </script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #121212; color: #f4f4f5; margin: 0; padding: 0; overflow-x: hidden; }
+        .glass-panel { background: rgba(24, 24, 27, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .spotify-player { background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(40px); border-top: 1px solid rgba(255, 255, 255, 0.1); }
+        input[type="range"] { accent-color: var(--theme-primary, #1DB954); }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+    </style>
+</head>
+<body x-data="auraApp()" :style="`--theme-primary: ${themeColor}`" @keydown.space.window.prevent="togglePlay()">
 
-    <!-- UI Implementation -->
-    <div class="p-10">
-        <template x-for="track in tracks" :key="track.id">
-            <button @click="play(track)" class="bg-primary p-4 rounded-xl text-white">
-                Play <span x-text="track.title"></span>
-            </button>
-        </template>
+    <!-- BACKGROUND WALLPAPER GLOW -->
+    <div class="fixed inset-0 bg-cover bg-center filter blur-3xl opacity-20 pointer-events-none scale-125 z-0 transition-all duration-700" :style="`background-image: url('${bgBlurImage}')`"></div>
+    <div class="fixed inset-0 bg-darkBg/90 pointer-events-none z-0"></div>
 
-        <div class="mt-10 p-6 bg-zinc-900 rounded-2xl" x-show="currentTrack">
-            <h2 x-text="currentTrack?.title"></h2>
-            <div class="w-full bg-zinc-700 h-2 mt-4">
-                <div class="bg-primary h-2" :style="width: ${progress}%"></div>
+    <!-- AUTHENTICATION SCREEN -->
+    <template x-if="!isLoggedIn">
+        <div class="relative min-h-screen flex items-center justify-center p-6 overflow-hidden z-10">
+            <div class="w-full max-w-md glass-panel p-8 rounded-3xl shadow-2xl border border-white/10">
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary mb-4 shadow-lg shadow-primary/30 text-white font-bold text-2xl">
+                        ♫
+                    </div>
+                    <h1 class="text-3xl font-bold tracking-tight text-white" x-text="isRegistering ? 'Create Account' : 'Log in to AURA'"></h1>
+                    <p class="text-sm text-zinc-400 mt-1 italic">"listen to your heart and mood"</p>
+                </div>
+
+                <form @submit.prevent="handleAuth()" class="space-y-4">
+                    <div>
+                        <label class="text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1 block">Email or Username</label>
+                        <input type="text" required x-model="authEmail" placeholder="admin" 
+                            class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition" />
+                    </div>
+                    <div>
+                        <label class="text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1 block">Password</label>
+                        <input type="password" required x-model="authPass" placeholder="••••••••" 
+                            class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition" />
+                    </div>
+                    <button type="submit" class="w-full py-3.5 rounded-full bg-primary font-bold text-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition" 
+                        x-text="isRegistering ? 'Sign Up' : 'Log In'">
+                    </button>
+                    <div class="text-center pt-2">
+                        <button type="button" @click="isRegistering = !isRegistering" class="text-xs text-zinc-400 hover:text-white transition" 
+                            x-text="isRegistering ? 'Already have an account? Log In' : 'Don\'t have an account? Sign up'">
+                        </button>
+                    </div>
+                </form>
+                <div class="mt-6 pt-4 border-t border-zinc-800 text-center">
+                    <p class="text-xs text-zinc-500">Quick Testing: <span class="text-zinc-300 font-mono">admin</span> / <span class="text-zinc-300 font-mono">admin</span></p>
+                </div>
             </div>
-            <button @click="togglePlay()" x-text="isPlaying ? 'Pause' : 'Play'" class="mt-4 border p-2"></button>
         </div>
-    </div>
+    </template>
+
+    <!-- MAIN SPOTIFY-INSPIRED APP INTERFACE -->
+    <template x-if="isLoggedIn">
+        <div class="relative min-h-screen pb-32 text-zinc-100 flex flex-col z-10">
+            
+            <!-- TOP NAVIGATION HEADER -->
+            <header class="flex items-center justify-between px-6 py-4 glass-panel sticky top-0 z-30 border-b border-zinc-800">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 rounded-full bg-primary flex items-center justify-center font-bold text-black text-lg">♫</div>
+                    <span class="font-bold text-xl tracking-wider text-white">AURA</span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button @click="currentTab = 'profile'" class="w-9 h-9 rounded-full border border-zinc-700 overflow-hidden hover:border-primary transition">
+                        <img :src="profilePicUrl" class="w-full h-full object-cover" />
+                    </button>
+                    <button @click="currentTab = 'settings'" class="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 hover:text-white transition">⚙️</button>
+                </div>
+            </header>
+
+            <!-- VIEW CONTAINER -->
+            <main class="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 overflow-y-auto">
+                
+                <!-- HOME VIEW -->
+                <div x-show="currentTab === 'home'" class="space-y-6">
+                    <div>
+                        <h2 class="text-3xl font-bold tracking-tight text-white mb-1" x-text="`Good evening, ${authEmail}`"></h2>
+                        <p class="text-sm text-zinc-400 italic">"listen to your heart and mood"</p>
+                    </div>
+
+                    <!-- Quick Picks Grid -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">Recently Played & Favorites</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            <template x-for="track in tracks" :key="track.id">
+                                <div @click="playTrack(track)" class="bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 hover:bg-zinc-800/80 transition cursor-pointer group shadow-lg">
+                                    <div class="relative aspect-square rounded-md overflow-hidden mb-3">
+                                        <img :src="track.coverUrl" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                                        <div class="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-primary text-black flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition duration-300 font-bold">
+                                            ▶
+                                        </div>
+                                    </div>
+                                    <h4 class="font-semibold text-sm truncate text-white" x-text="track.title"></h4>
+                                    <p class="text-xs text-zinc-400 truncate mt-0.5" x-text="track.artist"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Made For You Row -->
+                    <div class="pt-4">
+                        <h3 class="text-lg font-semibold mb-3">Made For You</h3>
+                        <div class="flex space-x-4 overflow-x-auto pb-2 scrollbar-none">
+                            <template x-for="track in tracks.slice().reverse()" :key="'made-'+track.id">
+                                <div @click="playTrack(track)" class="flex-shrink-0 w-40 bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 cursor-pointer hover:bg-zinc-800 transition">
+                                    <img :src="track.coverUrl" class="w-full aspect-square rounded-md object-cover mb-2" />
+                                    <h4 class="font-semibold text-sm truncate text-white" x-text="track.title"></h4>
+                                    <p class="text-xs text-zinc-400 truncate" x-text="track.source"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SEARCH VIEW -->
+                <div x-show="currentTab === 'search'" class="space-y-6" style="display: none;">
+                    <div class="relative">
+                        <input type="text" placeholder="What do you want to listen to?" 
+                            class="w-full bg-zinc-900 border border-zinc-800 rounded-full px-6 py-4 text-white placeholder-zinc-500 focus:outline-none focus:border-primary transition shadow-md" />
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-3">Browse All</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            <template x-for="cat in ['Pop', 'Hip-Hop', 'Indie & Alternative', 'Electronic / Synthwave', 'Workout', 'Chill & Ambient']">
+                                <div class="h-28 rounded-2xl p-4 bg-gradient-to-br from-zinc-800 to-zinc-900 border border-zinc-800 flex items-end font-bold text-lg text-white cursor-pointer hover:scale-[1.02] transition shadow" x-text="cat"></div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LIBRARY VIEW -->
+                <div x-show="currentTab === 'library'" class="space-y-4" style="display: none;">
+                    <h2 class="text-2xl font-bold">Your Library</h2>
+                    <div class="space-y-2">
+                        <template x-for="track in tracks" :key="'lib-'+track.id">
+                            <div @click="playTrack(track)" class="flex items-center justify-between p-3 rounded-xl bg-zinc-900/40 hover:bg-zinc-800/80 cursor-pointer transition">
+                                <div class="flex items-center space-x-3">
+                                    <img :src="track.coverUrl" class="w-12 h-12 rounded-md object-cover" />
+                                    <div>
+                                        <h4 class="font-semibold text-sm text-white" x-text="track.title"></h4>
+                                        <p class="text-xs text-zinc-400" x-text="track.artist"></p>
+                                    </div>
+                                </div>
+                                <span class="text-xs text-primary bg-primary/10 px-3 py-1 rounded-full font-medium" x-text="track.duration"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- FM VIEW -->
+                <div x-show="currentTab === 'fm'" class="text-center py-16 space-y-4" style="display: none;">
+                    <div class="w-20 h-20 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mx-auto text-primary text-2xl animate-pulse">📻</div>
+                    <h2 class="text-2xl font-bold">AURA Live Stations</h2>
+                    <p class="text-zinc-400 max-w-xs mx-auto text-sm">Tune into endless lossless radio stations curated around your current mood.</p>
+                </div>
+
+                <!-- PROFILE VIEW -->
+                <div x-show="currentTab === 'profile'" class="space-y-6" style="display: none;">
+                    <div class="flex items-center space-x-6 glass-panel p-6 rounded-3xl">
+                        <div class="relative group cursor-pointer" @click="promptProfilePicUpdate()">
+                            <img :src="profilePicUrl" class="w-24 h-24 rounded-full object-cover border-2 border-primary shadow-xl" />
+                            <div class="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                                <span class="text-white text-lg">✏️</span>
+                            </div>
+                        </div>
+                        <div>
+                            <h2 class="text-2xl font-bold text-white" x-text="authEmail"></h2>
+                            <p class="text-sm text-primary font-medium mt-0.5">AURA Premium Lossless Account</p>
+                            <button @click="isLoggedIn = false" class="mt-3 text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-4 py-1.5 rounded-full font-semibold">Log Out</button>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 rounded-3xl space-y-4">
+                        <h3 class="text-lg font-semibold">Connected Services</h3>
+                        <div class="flex items-center justify-between py-2 border-b border-zinc-800">
+                            <div>
+                                <h4 class="font-medium text-sm">Spotify Connect Integration</h4>
+                                <p class="text-xs text-zinc-400">Sync playlists and remote playback</p>
+                            </div>
+                            <button @click="spotifyConnected = !spotifyConnected" :class="spotifyConnected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-primary text-black font-bold'" class="px-4 py-2 rounded-full text-xs transition" x-text="spotifyConnected ? 'Connected' : 'Connect'"></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SETTINGS VIEW -->
+                <div x-show="currentTab === 'settings'" class="space-y-6" style="display: none;">
+                    <h2 class="text-2xl font-bold">Settings</h2>
+
+                    <!-- Theme & Wallpaper Customizer -->
+                    <div class="glass-panel p-6 rounded-3xl space-y-4">
+                        <h3 class="text-lg font-semibold">🎨 Theme & Wallpaper</h3>
+                        <div>
+                            <label class="text-xs text-zinc-400 block mb-2">Spotify Brand Accent Color</label>
+                            <div class="flex space-x-3 items-center">
+                                <template x-for="col in ['#1DB954', '#FF5722', '#9C27B0', '#3F51B5', '#00BCD4']">
+                                    <button @click="themeColor = col" :class="themeColor === col ? 'border-white scale-110' : 'border-transparent'" class="w-10 h-10 rounded-full border-2 transition shadow" :style="`background-color: ${col}`"></button>
+                                </template>
+                                <input type="color" x-model="themeColor" class="w-10 h-10 rounded-full bg-transparent cursor-pointer border-0" title="Custom color picker" />
+                            </div>
+                        </div>
+                        <div class="pt-2">
+                            <label class="text-xs text-zinc-400 block mb-2">Background Blur Wallpaper</label>
+                            <div class="flex items-center space-x-4">
+                                <div class="relative group cursor-pointer w-20 h-20 rounded-xl overflow-hidden border-2 border-zinc-700 hover:border-primary transition flex-shrink-0 shadow" @click="promptBgBlurUpdate()">
+                                    <img :src="bgBlurImage" class="w-full h-full object-cover filter blur-[2px]" />
+                                    <div class="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                                        <span class="text-white text-sm">✏️</span>
+                                    </div>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-xs text-zinc-300 font-medium">Click square to update background wallpaper URL</p>
+                                    <p class="text-[11px] text-zinc-500 truncate mt-0.5" x-text="bgBlurImage"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio & Equalizer Settings -->
+                    <div class="glass-panel p-6 rounded-3xl space-y-4">
+                        <h3 class="text-lg font-semibold">🎛️ Audio Quality & Equalizer</h3>
+                        <div class="flex justify-between items-center py-2 border-b border-zinc-800">
+                            <div><h4 class="text-sm font-medium">Streaming Resolution</h4><p class="text-xs text-zinc-400">Hi-Fi FLAC & 320kbps Priority</p></div>
+                            <select x-model="audioQuality" class="bg-zinc-900 border border-zinc-800 text-xs rounded-xl px-3 py-2 text-white">
+                                <option>Lossless (FLAC / 320kbps)</option>
+                                <option>High (256kbps)</option>
+                            </select>
+                        </div>
+                        <div class="pt-2 space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-medium">Equalizer Bands</span>
+                                <select x-model="equalizerPreset" class="bg-zinc-900 border border-zinc-800 text-xs rounded-xl px-3 py-2 text-white">
+                                    <option>Custom</option>
+                                    <option>Bass Booster</option>
+                                    <option>Acoustic</option>
+                                    <option>Flat</option>
+                                </select>
+                            </div>
+                            <div class="bg-zinc-900/60 p-4 rounded-xl border border-zinc-800">
+                                <div class="grid grid-cols-5 gap-2 text-center">
+                                    <div><input type="range" min="-12" max="12" x-model="eqBands.b60" class="w-full accent-primary h-20 [writing-mode:vertical-lr] [direction:rtl] mx-auto"/><span class="text-[10px] text-zinc-400 block mt-1">60Hz</span></div>
+                                    <div><input type="range" min="-12" max="12" x-model="eqBands.b230" class="w-full accent-primary h-20 [writing-mode:vertical-lr] [direction:rtl] mx-auto"/><span class="text-[10px] text-zinc-400 block mt-1">230Hz</span></div>
+                                    <div><input type="range" min="-12" max="12" x-model="eqBands.b910" class="w-full accent-primary h-20 [writing-mode:vertical-lr] [direction:rtl] mx-auto"/><span class="text-[10px] text-zinc-400 block mt-1">910Hz</span></div>
+                                    <div><input type="range" min="-12" max="12" x-model="eqBands.b4k" class="w-full accent-primary h-20 [writing-mode:vertical-lr] [direction:rtl] mx-auto"/><span class="text-[10px] text-zinc-400 block mt-1">4kHz</span></div>
+                                    <div><input type="range" min="-12" max="12" x-model="eqBands.b14k" class="w-full accent-primary h-20 [writing-mode:vertical-lr] [direction:rtl] mx-auto"/><span class="text-[10px] text-zinc-400 block mt-1">14kHz</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+
+            <!-- SPOTIFY-STYLE PERSISTENT BOTTOM PLAYER -->
+            <footer class="fixed bottom-0 left-0 right-0 spotify-player px-4 py-3 z-40 flex items-center justify-between">
+                
+                <!-- Track Meta -->
+                <div class="flex items-center space-x-3 w-1/4">
+                    <img :src="currentTrack ? currentTrack.coverUrl : tracks[0].coverUrl" class="w-14 h-14 rounded-md object-cover shadow" />
+                    <div class="truncate">
+                        <h4 class="font-semibold text-sm text-white truncate" x-text="currentTrack ? currentTrack.title : tracks[0].title"></h4>
+                        <p class="text-xs text-zinc-400 truncate" x-text="currentTrack ? currentTrack.artist : tracks[0].artist"></p>
+                    </div>
+                </div>
+
+                <!-- Playback Controls & Scrubber -->
+                <div class="flex flex-col items-center space-y-1.5 w-2/4 max-w-md">
+                    <div class="flex items-center space-x-6">
+                        <button @click="toggleShuffle()" :class="isShuffled ? 'text-primary' : 'text-zinc-400'" class="hover:text-white transition">🔀</button>
+                        <button @click="prevTrack()" class="text-zinc-300 hover:text-white transition text-lg">⏮</button>
+                        <button @click="togglePlay()" class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center font-bold shadow-xl hover:scale-105 transition" x-text="isPlaying ? '⏸' : '▶'"></button>
+                        <button @click="nextTrack()" class="text-zinc-300 hover:text-white transition text-lg">⏭</button>
+                        <button @click="toggleRepeat()" :class="isRepeating ? 'text-primary' : 'text-zinc-400'" class="hover:text-white transition">🔁</button>
+                    </div>
+                    <!-- Scrubber Bar -->
+                    <div class="w-full flex items-center space-x-2 text-xs text-zinc-400">
+                        <span x-text="formatTime(currentTime)"></span>
+                        <input type="range" min="0" :max="duration || 100" x-model="currentTime" @input="seekAudio($event.target.value)" class="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer" />
+                        <span x-text="currentTrack ? currentTrack.duration : '3:50'"></span>
+                    </div>
+                </div>
+
+                <!-- Volume & Expand Player -->
+                <div class="flex items-center justify-end space-x-4 w-1/4">
+                    <span class="text-xs text-primary font-medium bg-primary/10 px-2.5 py-1 rounded-full hidden sm:inline-block" x-text="currentTrack ? currentTrack.source : 'Lossless Engine'"></span>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-zinc-400 text-sm">🔊</span>
+                        <input type="range" min="0" max="1" step="0.05" x-model="volume" @input="updateVolume()" class="w-20 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer" />
+                    </div>
+                    <button @click="isFullPlayerOpen = true" class="text-zinc-400 hover:text-white text-lg ml-2">⛶</button>
+                </div>
+            </footer>
+
+            <!-- APPLE MUSIC / SPOTIFY FULL-SCREEN IMMERSIVE PLAYER OVERLAY -->
+            <template x-if="isFullPlayerOpen && currentTrack">
+                <div class="fixed inset-0 z-50 flex flex-col justify-between p-6 sm:p-12 overflow-hidden bg-darkBg/95 backdrop-blur-3xl animate-fadeIn">
+                    <div class="absolute inset-0 bg-cover bg-center filter blur-3xl opacity-70 scale-125" :style="`background-image: url('${currentTrack.coverUrl}')`"></div>
+                    <div class="absolute inset-0 bg-gradient-to-b from-darkBg/50 via-darkBg/80 to-darkBg"></div>
+
+                    <div class="relative z-10 flex items-center justify-between">
+                        <button @click="isFullPlayerOpen = false" class="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center border border-white/20">↓</button>
+                        <div class="text-center">
+                            <span class="text-xs font-semibold uppercase tracking-widest text-primary">Now Playing</span>
+                            <p class="text-xs text-zinc-300" x-text="currentTrack.album"></p>
+                        </div>
+                        <div class="w-10"></div>
+                    </div>
+
+                    <div class="relative z-10 my-auto max-w-sm mx-auto w-full space-y-6 text-center">
+                        <div class="aspect-square rounded-3xl overflow-hidden shadow-2xl border border-white/20">
+                            <img :src="currentTrack.coverUrl" class="w-full h-full object-cover" />
+                        </div>
+                        <div class="flex justify-between items-end text-left px-1">
+                            <div>
+                                <h2 class="text-2xl font-bold text-white" x-text="currentTrack.title"></h2>
+                                <p class="text-base text-zinc-300" x-text="currentTrack.artist"></p>
+                            </div>
+                            <span class="text-xs bg-primary/20 text-primary border border-primary/30 px-3 py-1 rounded-full font-semibold" x-text="currentTrack.source"></span>
+                        </div>
+                        <div class="space-y-2">
+                            <input type="range" min="0" :max="duration || 100" x-model="currentTime" @input="seekAudio($event.target.value)" class="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer" />
+                            <div class="flex justify-between text-xs text-zinc-400 font-medium">
+                                <span x-text="formatTime(currentTime)"></span>
+                                <span x-text="currentTrack.duration"></span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between px-6 pt-2">
+                            <button @click="toggleShuffle()" :class="isShuffled ? 'text-primary' : 'text-zinc-400'">🔀</button>
+                            <button @click="prevTrack()" class="text-white text-2xl">⏮</button>
+                            <button @click="togglePlay()" class="w-20 h-20 rounded-full bg-white text-black flex items-center justify-center text-3xl font-bold shadow-2xl" x-text="isPlaying ? '⏸' : '▶'"></button>
+                            <button @click="nextTrack()" class="text-white text-2xl">⏭</button>
+                            <button @click="toggleRepeat()" :class="isRepeating ? 'text-primary' : 'text-zinc-400'">🔁</button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- BOTTOM NAVIGATION BAR -->
+            <nav class="fixed bottom-0 left-0 right-0 glass-panel border-t border-zinc-800 px-6 py-3 flex justify-around items-center z-30 sm:hidden">
+                <template x-for="tab in [{id: 'home', label: 'Home', icon: '🏠'}, {id: 'search', label: 'Search', icon: '🔍'}, {id: 'library', label: 'Library', icon: '📚'}, {id: 'fm', label: 'FM', icon: '📻'}]">
+                    <button @click="currentTab = tab.id" :class="currentTab === tab.id ? 'text-primary font-bold' : 'text-zinc-400'" class="flex flex-col items-center space-y-1 transition">
+                        <span class="text-lg" x-text="tab.icon"></span>
+                        <span class="text-[10px]" x-text="tab.label"></span>
+                    </button>
+                </template>
+            </nav>
+        </div>
+    </template>
+
+    <!-- REAL HTML5 AUDIO ENGINE & REACTIVE CONTROLLER -->
+    <script>
+        function auraApp() {
+            return {
+                isLoggedIn: false,
+                isRegistering: false,
+                authEmail: 'admin',
+                authPass: 'admin',
+                currentTab: 'home',
+                
+                // Playback State
+                currentTrack: null,
+                isPlaying: false,
+                isFullPlayerOpen: false,
+                currentTime: 0,
+                duration: 230,
+                volume: 0.8,
+                isShuffled: false,
+                isRepeating: false,
+                audioElement: new Audio(),
+
+                // Customization
+                themeColor: '#1DB954',
+                bgBlurImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80',
+                profilePicUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+                spotifyConnected: false,
+                
+                // Audio Settings
+                audioQuality: 'Lossless (FLAC / 320kbps)',
+                equalizerPreset: 'Flat',
+                eqBands: { b60: 0, b230: 0, b910: 0, b4k: 0, b14k: 0 },
+
+                tracks: [
+                    { id: '1', title: 'Starboy', artist: 'The Weeknd, Daft Punk', album: 'Starboy', coverUrl: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&auto=format&fit=crop&q=80', duration: '3:50', source: 'JioSaavn Lossless', streamUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
+                    { id: '2', title: 'Midnight City', artist: 'M83', album: 'Hurry Up, We\'re Dreaming', coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80', duration: '4:03', source: 'YouTube Music Opus', streamUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
+                    { id: '3', title: 'Resonance', artist: 'HOME', album: 'Odyssey', coverUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80', duration: '3:32', source: 'Internet Archive FLAC', streamUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
+                    { id: '4', title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80', duration: '3:20', source: 'JioSaavn Lossless', streamUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' }
+                ],
+
+                init() {
+                    this.audioElement.volume = this.volume;
+                    this.audioElement.addEventListener('timeupdate', () => {
+                        this.currentTime = this.audioElement.currentTime;
+                        if(this.audioElement.duration) this.duration = this.audioElement.duration;
+                    });
+                    this.audioElement.addEventListener('ended', () => {
+                        if (this.isRepeating) {
+                            this.audioElement.play();
+                        } else {
+                            this.nextTrack();
+                        }
+                    });
+                },
+
+                handleAuth() {
+                    if (this.authEmail && this.authPass) {
+                        this.isLoggedIn = true;
+                    } else {
+                        alert('Please provide valid credentials');
+                    }
+                },
+
+                playTrack(track) {
+                    this.currentTrack = track;
+                    this.audioElement.src = track.streamUrl;
+                    this.audioElement.play().then(() => {
+                        this.isPlaying = true;
+                    }).catch(e => {
+                        console.error("Playback error:", e);
+                        alert("Playback blocked or stream failed. Click play to start.");
+                    });
+                },
+
+                togglePlay() {
+                    if (!this.currentTrack) {
+                        this.playTrack(this.tracks[0]);
+                        return;
+                    }
+                    if (this.isPlaying) {
+                        this.audioElement.pause();
+                        this.isPlaying = false;
+                    } else {
+                        this.audioElement.play().then(() => {
+                            this.isPlaying = true;
+                        });
+                    }
+                },
+
+                seekAudio(val) {
+                    this.audioElement.currentTime = val;
+                },
+
+                updateVolume() {
+                    this.audioElement.volume = this.volume;
+                },
+
+                nextTrack() {
+                    if(!this.currentTrack) return;
+                    let currentIndex = this.tracks.findIndex(t => t.id === this.currentTrack.id);
+                    let nextIndex = (currentIndex + 1) % this.tracks.length;
+                    this.playTrack(this.tracks[nextIndex]);
+                },
+
+                prevTrack() {
+                    if(!this.currentTrack) return;
+                    let currentIndex = this.tracks.findIndex(t => t.id === this.currentTrack.id);
+                    let prevIndex = (currentIndex - 1 + this.tracks.length) % this.tracks.length;
+                    this.playTrack(this.tracks[prevIndex]);
+                },
+
+                toggleShuffle() {
+                    this.isShuffled = !this.isShuffled;
+                },
+
+                toggleRepeat() {
+                    this.isRepeating = !this.isRepeating;
+                },
+
+                formatTime(seconds) {
+                    if(isNaN(seconds)) return "0:00";
+                    let m = Math.floor(seconds / 60);
+                    let s = Math.floor(seconds % 60);
+                    return m + ":" + (s < 10 ? "0" : "") + s;
+                },
+
+                promptProfilePicUpdate() {
+                    const newUrl = prompt('Enter new profile picture image URL:', this.profilePicUrl);
+                    if (newUrl && newUrl.trim() !== '') this.profilePicUrl = newUrl.trim();
+                },
+
+                promptBgBlurUpdate() {
+                    const newUrl = prompt('Enter new background blur wallpaper image URL:', this.bgBlurImage);
+                    if (newUrl && newUrl.trim() !== '') this.bgBlurImage = newUrl.trim();
+                }
+            }
+        }
+    </script>
 </body>
 </html>
