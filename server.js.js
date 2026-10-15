@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
@@ -13,35 +12,48 @@ app.use(cors());
 app.use(express.static('public'));
 
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aura_db';
 const JWT_SECRET = process.env.JWT_SECRET || 'aura_super_secret_jwt_key_here';
 
 // ==========================================
-// 1. MONGODB DATABASE MODEL SETUP
+// 1. LOCAL IN-MEMORY DATABASE SETUP
 // ==========================================
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB Atlas / Local DB (AURA Database)'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
+console.log('✅ Initializing Local In-Memory Database (No MongoDB required)');
 
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  profilePicUrl: { type: String, default: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80' },
-  bgBlurImage: { type: String, default: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80' },
-  spotify: {
-    accessToken: { type: String },
-    refreshToken: { type: String },
-    connected: { type: Boolean, default: false }
-  },
-  jioSaavn: {
-    username: { type: String },
-    connected: { type: Boolean, default: false }
-  },
-  favorites: [{ trackId: String, title: String, artist: String, coverUrl: String }],
-  createdAt: { type: Date, default: Date.now }
-});
+// This array acts as our local database table
+const localDatabase = [];
 
-const User = mongoose.model('User', userSchema);
+// Custom Local DB Engine that mimics Mongoose behavior
+const User = {
+  findOne: async (query) => {
+    return localDatabase.find(user => user.email === query.email) || null;
+  },
+  findById: async (id) => {
+    return localDatabase.find(user => user._id === id) || null;
+  },
+  create: async (data) => {
+    const newUser = {
+      _id: Date.now().toString(), // Generate a unique ID
+      email: data.email,
+      password: data.password,
+      profilePicUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+      bgBlurImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80',
+      spotify: { connected: false },
+      jioSaavn: { connected: false },
+      favorites: [],
+      createdAt: new Date()
+    };
+    localDatabase.push(newUser);
+    return newUser;
+  },
+  findByIdAndUpdate: async (id, updateData) => {
+    const userIndex = localDatabase.findIndex(user => user._id === id);
+    if (userIndex > -1) {
+      localDatabase[userIndex] = { ...localDatabase[userIndex], ...updateData };
+      return localDatabase[userIndex];
+    }
+    return null;
+  }
+};
 
 // ==========================================
 // 2. AUTHENTICATION MIDDLEWARE
@@ -67,7 +79,6 @@ function normalizeString(str) {
   return str.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').trim();
 }
 
-// Stage 1: JioSaavn Unofficial API Resolver
 async function resolveJioSaavn(query) {
   try {
     const searchUrl = `https://www.jiosaavn.com/api.php?__call=search.getResults&q=${encodeURIComponent(query)}&_format=json&_marker=0&api_version=4&ctx=web60`;
@@ -80,7 +91,6 @@ async function resolveJioSaavn(query) {
     if (results.length > 0) {
       const bestMatch = results[0];
       
-      // Safely handle media urls without corrupting encrypted strings
       let streamUrl = null;
       if (bestMatch.media_url) {
         streamUrl = bestMatch.media_url.replace('_96.mp4', '_320.mp4');
@@ -95,19 +105,17 @@ async function resolveJioSaavn(query) {
     }
     return null;
   } catch (e) {
-    console.error('[JioSaavn Resolver Error]:', e.message);
+    console.error('[JioSaavn Error]:', e.message);
     return null;
   }
 }
 
-// Stage 2: YouTube Music Fallback via Piped API
 async function resolveYouTubeMusic(query) {
   try {
     const instance = 'https://pipedapi.kavin.rocks';
     const searchRes = await axios.get(`${instance}/search?q=${encodeURIComponent(query)}&filter=songs`, { timeout: 4000 });
     const items = searchRes.data.items || [];
     if (items.length > 0) {
-      // Safely extract the 'v' parameter using URLSearchParams to avoid trailing params
       const urlString = items[0].url;
       const queryString = urlString.includes('?') ? urlString.split('?')[1] : '';
       const videoId = new URLSearchParams(queryString).get('v');
@@ -126,12 +134,11 @@ async function resolveYouTubeMusic(query) {
     }
     return null;
   } catch (e) {
-    console.error('[YouTube Music Resolver Error]:', e.message);
+    console.error('[YouTube Error]:', e.message);
     return null;
   }
 }
 
-// Stage 3: Internet Archive FLAC Archive Fallback
 async function resolveInternetArchive(title, artist) {
   try {
     const query = `title:(${encodeURIComponent(title)}) AND creator:(${encodeURIComponent(artist)}) AND format:(FLAC)`;
@@ -142,7 +149,6 @@ async function resolveInternetArchive(title, artist) {
     if (docs.length > 0) {
       const identifier = docs[0].identifier;
       
-      // Fetch item metadata to locate the actual FLAC file name
       const metadataRes = await axios.get(`https://archive.org/metadata/${identifier}`, { timeout: 4000 });
       const files = metadataRes.data.files || [];
       const flacFile = files.find(f => f.format === 'FLAC');
@@ -156,7 +162,7 @@ async function resolveInternetArchive(title, artist) {
     }
     return null;
   } catch (e) {
-    console.error('[Internet Archive Resolver Error]:', e.message);
+    console.error('[Archive Error]:', e.message);
     return null;
   }
 }
@@ -182,12 +188,11 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-// Login Account (Supports admin/admin testing fallback)
+// Login Account 
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    // Testing credentials bypass
     if (email === 'admin' && password === 'admin') {
       const token = jwt.sign({ userId: 'mock_admin_id' }, JWT_SECRET, { expiresIn: '30d' });
       return res.json({ success: true, token, email: 'admin' });
@@ -205,7 +210,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Get User Profile & Preferences
+// Get User Profile
 app.get('/api/user/profile', verifyToken, async (req, res) => {
   try {
     if (req.user.userId === 'mock_admin_id') {
@@ -233,7 +238,7 @@ app.get('/api/user/profile', verifyToken, async (req, res) => {
   }
 });
 
-// Update User Customizations (Profile Pic, Wallpaper)
+// Update User Customizations
 app.put('/api/user/preferences', verifyToken, async (req, res) => {
   try {
     const { profilePicUrl, bgBlurImage } = req.body;
@@ -252,43 +257,25 @@ app.put('/api/user/preferences', verifyToken, async (req, res) => {
   }
 });
 
-// Multi-Stage Waterfall Stream Resolver Endpoint
+// Resolver Endpoint
 app.get('/api/resolve-stream', verifyToken, async (req, res) => {
   const { title, artist } = req.query;
-  if (!title || !artist) {
-    return res.status(400).json({ error: 'Title and artist parameters are required.' });
-  }
+  if (!title || !artist) return res.status(400).json({ error: 'Title and artist parameters are required.' });
 
   const cleanQuery = `${normalizeString(title)} ${normalizeString(artist)}`;
-  console.log(`[Waterfall Resolver] Searching for track: "${cleanQuery}"`);
 
-  // Priority 1: JioSaavn Unofficial API
   let match = await resolveJioSaavn(cleanQuery);
-  if (match && match.streamUrl) {
-    console.log(`[Match Found] Source: JioSaavn`);
-    return res.json({ success: true, ...match });
-  }
+  if (match && match.streamUrl) return res.json({ success: true, ...match });
 
-  // Priority 2: YouTube Music Fallback
-  console.log(`[Waterfall] JioSaavn miss. Trying YouTube Music...`);
   match = await resolveYouTubeMusic(cleanQuery);
-  if (match && match.streamUrl) {
-    console.log(`[Match Found] Source: YouTube Music`);
-    return res.json({ success: true, ...match });
-  }
+  if (match && match.streamUrl) return res.json({ success: true, ...match });
 
-  // Priority 3: Internet Archive FLAC Fallback
-  console.log(`[Waterfall] YouTube miss. Trying Internet Archive...`);
   match = await resolveInternetArchive(title, artist);
-  if (match && match.streamUrl) {
-    console.log(`[Match Found] Source: Internet Archive FLAC`);
-    return res.json({ success: true, ...match });
-  }
+  if (match && match.streamUrl) return res.json({ success: true, ...match });
 
   return res.status(404).json({ success: false, error: 'No lossless or free audio stream found for this track.' });
 });
 
-// Start Express Server
 app.listen(PORT, () => {
   console.log(`🚀 AURA Production Backend running smoothly on port ${PORT}`);
 });
