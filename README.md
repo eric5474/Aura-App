@@ -83,7 +83,10 @@ npm run android:apk        # APK at android/app/build/outputs/apk/debug/app-debu
 
 **AURA account.** The first time AURA opens, it asks you to create an account (name, email, password). It's kept on that device only: the password is stored as a salted PBKDF2 hash, never in plain text. Forgot it? "Reset AURA on this device" removes the account but keeps your library and playlists. Each device (browser, phone app) has its own account.
 
-**JioSaavn account (Profile → JioSaavn account → Sign In).** Sign in with your JioSaavn email and password. If JioSaavn reports the account as Pro, songs stream at 320 kbps; otherwise they stay at 128 kbps. JioSaavn has no lossless audio; 320 kbps is its highest quality. Your password goes only to JioSaavn and isn't saved. On the Render site, the sign-in is kept in your browser as a sealed token only your server can read. Phone-number (OTP) sign-in isn't supported.
+**JioSaavn account (Profile → JioSaavn account → Sign In).** AURA never asks for your JioSaavn password. You sign in on JioSaavn's own site (phone number and code work), and AURA picks up that sign-in. If JioSaavn reports the account as Pro, songs stream at 320 kbps; otherwise they stay at 128 kbps. JioSaavn has no lossless audio; 320 kbps is its highest quality.
+
+- **Android app:** tap *Open JioSaavn*; jiosaavn.com opens inside AURA. Sign in there, tap *Done*, and you're connected. Nothing to copy.
+- **Website (Render / your computer):** browsers don't let one site read another's sign-in (an iframe can't do it), so it takes one copy and paste, once per browser: sign in at jiosaavn.com, press F12 → Network → reload → click the first request → Request Headers → copy the `cookie` value, and paste it into AURA. The server keeps it sealed in a token held by your browser.
 
 If you have Pro but AURA shows 128 kbps, open "Show what JioSaavn returned" on the Profile screen and share that list of field names (it contains no values).
 
@@ -105,7 +108,7 @@ Your library, playlists, loved songs, recently played items and settings are sav
 
 ## Backend API
 
-- `POST /api/account/login` `{username,password}`: JioSaavn sign-in, returns a sealed account token
+- `POST /api/account/connect` `{session}`: checks a JioSaavn sign-in cookie, returns a sealed account token
 - `GET /api/account/status?acct=TOKEN`
 - `GET /api/diagnose`: checks each playback step
 

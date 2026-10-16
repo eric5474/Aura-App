@@ -50,6 +50,7 @@ fs.mkdirSync(pkgDir, { recursive: true });
 fs.writeFileSync(path.join(pkgDir, 'MainActivity.java'), `package ${cap.appId};
 
 import android.net.Uri;
+import android.os.Bundle;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -66,6 +67,12 @@ import java.util.Map;
 
 public class MainActivity extends BridgeActivity {
     private boolean ready = false;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(JioLoginPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
 
     @Override
     public void onStart() {
@@ -106,6 +113,121 @@ public class MainActivity extends BridgeActivity {
                 }
                 return super.shouldInterceptRequest(view, request);
             }
+        });
+    }
+}
+`);
+
+// JioSaavn sign-in: opens jiosaavn.com inside the app; the person signs in there (phone number + code),
+// taps Done, and AURA reads that sign-in from the app's own cookie store.
+fs.writeFileSync(path.join(pkgDir, 'JioLoginPlugin.java'), `package ${cap.appId};
+
+import android.app.Dialog;
+import android.graphics.Color;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.webkit.CookieManager;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+@CapacitorPlugin(name = "JioLogin")
+public class JioLoginPlugin extends Plugin {
+    private static final String SITE = "https://www.jiosaavn.com";
+
+    @PluginMethod
+    public void open(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            final boolean[] finished = { false };
+            final Dialog d = new Dialog(getActivity(), android.R.style.Theme_Material_Light_NoActionBar_Fullscreen);
+            LinearLayout root = new LinearLayout(getActivity());
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setBackgroundColor(Color.WHITE);
+
+            LinearLayout bar = new LinearLayout(getActivity());
+            bar.setOrientation(LinearLayout.HORIZONTAL);
+            bar.setGravity(Gravity.CENTER_VERTICAL);
+            bar.setBackgroundColor(Color.parseColor("#111514"));
+            int pad = (int) (8 * getActivity().getResources().getDisplayMetrics().density);
+            bar.setPadding(pad, pad, pad, pad);
+            Button cancel = new Button(getActivity());
+            cancel.setText("Cancel");
+            TextView title = new TextView(getActivity());
+            title.setText("Sign in to JioSaavn, then tap Done");
+            title.setTextColor(Color.WHITE);
+            title.setGravity(Gravity.CENTER);
+            Button done = new Button(getActivity());
+            done.setText("Done");
+            bar.addView(cancel);
+            bar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            bar.addView(done);
+
+            final WebView wv = new WebView(getActivity());
+            WebSettings ws = wv.getSettings();
+            ws.setJavaScriptEnabled(true);
+            ws.setDomStorageEnabled(true);
+            CookieManager cm = CookieManager.getInstance();
+            cm.setAcceptCookie(true);
+            cm.setAcceptThirdPartyCookies(wv, true);
+            wv.setWebViewClient(new WebViewClient() {
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest req) {
+                    String s = req.getUrl().getScheme();
+                    return !("http".equals(s) || "https".equals(s)); // stay on the website; ignore "open in app" links
+                }
+            });
+            wv.loadUrl(SITE + "/");
+
+            done.setOnClickListener(v -> {
+                if (finished[0]) return;
+                finished[0] = true;
+                CookieManager.getInstance().flush();
+                String c = CookieManager.getInstance().getCookie(SITE);
+                JSObject r = new JSObject();
+                r.put("cookie", c == null ? "" : c);
+                d.dismiss();
+                wv.destroy();
+                call.resolve(r);
+            });
+            cancel.setOnClickListener(v -> d.dismiss());
+            d.setOnDismissListener(x -> {
+                if (finished[0]) return;
+                finished[0] = true;
+                wv.destroy();
+                call.reject("cancelled");
+            });
+
+            root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            root.addView(wv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+            d.setContentView(root);
+            d.show();
+        });
+    }
+
+    // Forget the JioSaavn sign-in kept inside the app.
+    @PluginMethod
+    public void signOut(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            CookieManager cm = CookieManager.getInstance();
+            String c = cm.getCookie(SITE);
+            if (c != null) {
+                for (String part : c.split(";")) {
+                    String name = part.split("=")[0].trim();
+                    if (name.isEmpty()) continue;
+                    cm.setCookie(SITE, name + "=; Max-Age=0; Path=/");
+                    cm.setCookie(SITE, name + "=; Max-Age=0; Path=/; Domain=.jiosaavn.com");
+                }
+            }
+            cm.flush();
+            call.resolve();
         });
     }
 }

@@ -392,26 +392,42 @@ function findStr(o, re) {
   (function walk(x, d) { if (out || !x || typeof x !== 'object' || d > 5) return; for (const [k, v] of Object.entries(x)) { if (out) return; if (re.test(k) && typeof v === 'string' && v.trim()) out = v.trim(); else if (v && typeof v === 'object') walk(v, d + 1); } })(o, 0);
   return out;
 }
-async function login(username, password) {
-  username = String(username || '').trim();
-  if (!username || !password) throw new Error('Enter your JioSaavn email and password');
-  const cookies = [];
-  const d = await call('user.login', { username, password }, { post: true, v4: false, fresh: true, allowError: true, cookies });
-  const err = d && (d.error || (d.status && /fail|error/i.test(String(d.status)) && (d.message || d.status)));
-  if (err) {
-    const msg = typeof err === 'string' ? err : (err.msg || err.message || 'Sign-in failed');
-    throw new Error(/password|credential|invalid|incorrect/i.test(msg) ? 'Wrong email or password' : msg);
+// The user signs in on jiosaavn.com themselves (phone number + code, or any other way JioSaavn offers),
+// then pastes that browser's sign-in cookie here. AURA never sees a password.
+function cleanSession(raw) {
+  let v = String(raw || '').trim().replace(/^cookie\s*:\s*/i, '').replace(/[\r\n]+/g, ' ');
+  return v.split(';').map((x) => x.trim()).filter((x) => /^[A-Za-z0-9_.\-]+=[^;]*$/.test(x)).join('; ');
+}
+// Find the signed-in user's own record in a response (so promos or other people's data can't count as Pro).
+function userRecord(d) {
+  let best = null;
+  (function walk(o, depth) {
+    if (best || !o || typeof o !== 'object' || depth > 6) return;
+    const k = Object.keys(o);
+    if (k.some((x) => /^(uid|user_?id)$/i.test(x)) && k.some((x) => /^(username|email|phone(_?number)?|firstname|first_name|name)$/i.test(x))) { best = o; return; }
+    for (const v of Object.values(o)) walk(v, depth + 1);
+  })(d, 0);
+  return best;
+}
+async function accountFromSession(raw) {
+  const session = cleanSession(raw);
+  if (!session) throw new Error('Paste the cookie value you copied from jiosaavn.com');
+  let rec = null;
+  for (const t of [{}, { ctx: 'android' }]) {
+    try { rec = userRecord(await call('webapi.getLaunchData', {}, { ...t, fresh: true, session })); } catch (_) {}
+    if (rec) break;
   }
-  if (!cookies.length && !(d && (d.data || d.uid || d.user || d.username))) throw new Error('JioSaavn didn’t accept the sign-in');
-  const p = proFrom(d);
+  if (!rec) throw new Error('JioSaavn didn’t recognise this sign-in. Sign in on jiosaavn.com again and copy a fresh cookie');
+  const p = proFrom(rec);
+  const phone = findStr(rec, /^phone(_?number)?$/i);
   return {
-    name: findStr(d, /^(firstname|first_name)$/i) || findStr(d, /^(name|fullname|full_name)$/i) || username.split('@')[0],
-    email: findStr(d, /^email$/i) || (username.includes('@') ? username : ''),
+    name: findStr(rec, /^(firstname|first_name)$/i) || findStr(rec, /^(name|fullname|full_name)$/i) || (phone ? '…' + phone.slice(-4) : 'JioSaavn user'),
+    email: findStr(rec, /^email$/i),
     pro: p.pro, until: p.until, fields: p.fields,
-    session: cookies.join('; '),
+    session,
   };
 }
 
-const api = { login, proFrom, home, search, songs, album, playlist, artist, lyrics, songRadio, featuredRadio, streamUrl, forgetStream, UA, BASE };
+const api = { accountFromSession, cleanSession, proFrom, home, search, songs, album, playlist, artist, lyrics, songRadio, featuredRadio, streamUrl, forgetStream, UA, BASE };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 else globalThis.JioSaavn = api;

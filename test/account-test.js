@@ -49,18 +49,24 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
 
   // JioSaavn: wrong password, free account, Pro account
   await ev(() => go('profile', undefined, true));
-  await pg.click('[data-act="js-connect"]');
-  await pg.fill('#js-user', 'pro@test.com'); await pg.fill('#js-pass', 'nope'); await pg.click('#js-login-form button[type=submit]');
-  await pg.waitForFunction(() => /Wrong email or password/.test((document.querySelector('#js-login-form .auth-err') || {}).textContent));
-  ok(true, 'JioSaavn wrong password refused');
-  await pg.fill('#js-user', 'free@test.com'); await pg.fill('#js-pass', 'secret123'); await pg.click('#js-login-form button[type=submit]');
+  const connect = async (cookie) => { await pg.click('[data-act="js-connect"]'); await pg.fill('#js-cookie', cookie); await pg.click('#js-login-form button[type=submit]'); };
+  await connect('L=hindi; sess=WRONG');
+  await pg.waitForFunction(() => /didn’t recognise/.test((document.querySelector('#js-login-form .auth-err') || {}).textContent));
+  ok(true, 'unknown JioSaavn cookie refused');
+  await pg.click('[data-act="close-modal"]');
+  await connect('L=hindi; sess=F123; geo=DE');
   await pg.waitForSelector('[data-act="js-signout"]');
-  ok(await ev(() => /doesn’t show Pro/.test(document.getElementById('view').textContent) && /128 kbps/.test(document.getElementById('view').textContent)), 'free account stays at 128 kbps');
+  ok(await ev(() => /doesn’t show Pro/.test(document.getElementById('view').textContent) && /128 kbps/.test(document.getElementById('view').textContent)), 'free account stays at 128 kbps (a Pro promo elsewhere in the reply doesn’t count)');
   await pg.click('[data-act="js-signout"]'); await pg.waitForSelector('[data-act="js-connect"]');
-  await pg.click('[data-act="js-connect"]');
-  await pg.fill('#js-user', 'pro@test.com'); await pg.fill('#js-pass', 'secret123'); await pg.click('#js-login-form button[type=submit]');
+  await connect('cookie: L=hindi; sess=P123; geo=DE');
   await pg.waitForSelector('[data-act="js-signout"]');
   ok(await ev(() => /320 kbps/.test(document.getElementById('view').textContent)), 'Pro account shows 320 kbps');
+  await pg.click('[data-act="js-signout"]'); await pg.waitForSelector('[data-act="js-connect"]');
+  await pg.click('[data-act="js-connect"]'); await pg.waitForSelector('#js-cookie');
+  await pg.screenshot({ path: out + '/a2-connect.png' });
+  await pg.click('[data-act="close-modal"]');
+  await connect('L=hindi; sess=P123');
+  await pg.waitForSelector('[data-act="js-signout"]');
   await pg.screenshot({ path: out + '/a2-profile-pro.png' });
 
   // forged token is ignored by the server
