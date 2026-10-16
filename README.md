@@ -34,6 +34,21 @@ Open `http://<your-computer's-IP>:3000` on the phone. Use **Add to Home Screen**
 | `AURA_LANGUAGES` | `hindi,english` | Languages for the home feed and stations, e.g. `hindi,english,punjabi,tamil` |
 | `AURA_BITRATE` | `128` | Stream bitrate requested from JioSaavn |
 
+## Your own private AURA on Render (free)
+
+AURA can run on [Render](https://render.com)'s free plan so you can open it from anywhere. It's password-protected: AURA refuses to start in the cloud without `AURA_PASSWORD`, because it's your personal player, not a public site.
+
+1. Sign up at render.com with **Sign in with GitHub**.
+2. Choose **New + → Blueprint**, pick the **Aura-App** repository, and confirm. Render reads `render.yaml`.
+3. When asked for **AURA_PASSWORD**, type a password only you know, then press **Apply**.
+4. When the deploy finishes, open the `https://aura-….onrender.com` address. Your browser asks for a login: type any username and your AURA password.
+5. On your phone, open the same address in Chrome and use **Add to Home screen**.
+
+Notes:
+- Free services sleep after 15 minutes without visits; the first visit afterwards takes about a minute.
+- Every push to `main` redeploys automatically.
+- If a song can't play, AURA shows the reason. Music is only licensed in some countries, and Render's servers are outside India.
+
 ## Android app (APK)
 
 The Android app works on its own. The phone talks to JioSaavn directly, so no computer or server is needed.

@@ -1,0 +1,20 @@
+# Render Blueprint for AURA. In Render: New + → Blueprint → pick this repository.
+# You'll be asked for AURA_PASSWORD; that password protects your AURA.
+services:
+  - type: web
+    name: aura
+    runtime: node
+    plan: free
+    region: singapore          # closest Render region to India
+    buildCommand: echo "AURA needs no build step"
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: NODE_VERSION
+        value: "20"
+      - key: AURA_LANGUAGES
+        value: hindi,english
+      - key: AURA_PASSWORD
+        sync: false            # Render asks you to type it in; it's never stored in GitHub

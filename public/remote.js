@@ -232,7 +232,7 @@ const AE = {
           if (audio.dataset.id !== id) return;
           audio.src = u;
           if (this.playing) audio.play().catch(() => {});
-        }).catch((e) => { toast(e.message); if (S.playing) setTimeout(next, 700); });
+        }).catch((e) => failed(t, e.message));
         return;
       }
       audio.src = '/api/stream/' + enc(t.id);
@@ -261,13 +261,25 @@ audio.addEventListener('error', () => {
     audio.dataset.retried = '1';
     window.JioSaavn.forgetStream(id);
     window.AURA_STREAM_URL(id).then((u) => { if (audio.dataset.id !== id) return; E.want = at; audio.src = u; if (S.playing) audio.play().catch(() => {}); })
-      .catch(() => { toast(`Couldn’t play “${t.title}”. Skipping.`); if (S.playing) setTimeout(next, 700); });
+      .catch((e) => failed(t, e.message));
     return;
   }
-  toast(`Couldn’t play “${t ? t.title : 'this song'}”. Skipping.`);
+  const code = audio.error ? audio.error.code : 0;
   audio.dataset.id = '';
-  if (S.playing) setTimeout(next, 700);
+  const why = window.AURA_STREAM_URL
+    ? Promise.resolve(code === 4 ? 'the audio couldn’t be loaded. It may not be licensed in your country' : `audio error ${code}`)
+    : api('/api/streamcheck/' + enc(t ? t.id : '')).then((r) => (r.ok ? `audio error ${code}` : r.error)).catch(() => `audio error ${code}`);
+  why.then((w) => failed(t, w));
 });
+// Show why a song failed; skip ahead, but stop after three failures in a row instead of racing through the queue.
+let failCount = 0;
+audio.addEventListener('playing', () => { failCount = 0; });
+function failed(t, why) {
+  failCount++;
+  toast(`Couldn’t play “${t ? t.title : 'this song'}”: ${why}`);
+  if (failCount >= 3) { S.playing = false; E.playing = false; updateAll(); return; }
+  if (S.playing) setTimeout(next, 1500);
+}
 audio.addEventListener('waiting', () => { const s = document.querySelector('.lcd-title'); if (s) s.dataset.wait = '1'; });
 const _onEnded = onEnded;
 onEnded = function () {

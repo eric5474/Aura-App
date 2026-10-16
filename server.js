@@ -15,6 +15,23 @@ const js = require('./jiosaavn');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
+const PASSWORD = process.env.AURA_PASSWORD || '';
+const crypto = require('crypto');
+
+// On a cloud host AURA must be password-protected: it's your personal player, not a public site.
+const ON_CLOUD = !!(process.env.RENDER || process.env.RAILWAY_ENVIRONMENT || process.env.FLY_APP_NAME || process.env.KOYEB_APP_NAME);
+if (ON_CLOUD && !PASSWORD) {
+  console.error('AURA_PASSWORD is not set. Add it in your host\'s environment settings so only you can open AURA.');
+  process.exit(1);
+}
+function allowed(req) {
+  if (!PASSWORD) return true;
+  const m = /^Basic\s+(.+)$/i.exec(req.headers.authorization || '');
+  if (!m) return false;
+  const given = Buffer.from(m[1], 'base64').toString('utf8').split(':').slice(1).join(':');
+  const a = crypto.createHash('sha256').update(given).digest(), b = crypto.createHash('sha256').update(PASSWORD).digest();
+  return crypto.timingSafeEqual(a, b);
+}
 const PUBLIC = path.join(__dirname, 'public');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -29,7 +46,14 @@ function sendJSON(res, code, body) {
 }
 
 const routes = [
-  [/^\/api\/health$/, async () => ({ ok: true, source: 'jiosaavn', version: 1 })],
+  [/^\/api\/health$/, async () => ({ ok: true, version: 1 })],
+  [/^\/api\/streamcheck\/([^/]+)$/, async (m) => {
+    try {
+      const url = await js.streamUrl(decodeURIComponent(m[1]));
+      const r = await fetch(url, { headers: { Range: 'bytes=0-1', 'User-Agent': js.UA } });
+      return r.ok ? { ok: true } : { ok: false, error: `the song’s audio server refused it (HTTP ${r.status}); it may not be licensed where this server runs` };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }],
   [/^\/api\/home$/, () => js.home()],
   [/^\/api\/search$/, (m, q) => js.search(q.get('q'), q.get('type') || 'all', Number(q.get('page')) || 1)],
   [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],
@@ -75,6 +99,7 @@ const SHELL_HEAD = `<!doctype html>
 <link rel="icon" href="/logo-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/logo-192.png">
 <link rel="manifest" href="/manifest.webmanifest">
+<script>window.AURA_SERVER = true;</script>
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0;font:14px/1.4 system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
@@ -95,6 +120,10 @@ function serveStatic(req, res, pathname) {
 
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (u.pathname !== '/api/health' && !allowed(req)) {
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="AURA", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('AURA is private. Enter your AURA password (any username).');
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   const sm = u.pathname.match(/^\/api\/stream\/([^/]+)$/);
   if (sm) return stream(req, res, decodeURIComponent(sm[1]));

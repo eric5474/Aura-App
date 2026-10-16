@@ -1270,7 +1270,7 @@ addEventListener('resize',closeMenu);
 /* boot */
 function bootDemo(){if(window.__booted) return;window.__booted=1;applyTheme();renderSidebar();renderPlayer();renderPanel();renderView();document.body.classList.add('paused')}
 /* When AURA is served by its own backend (on this computer or your network), load the live-catalogue adapter. */
-if(/^(localhost|127\.|\[::1\]|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname)||location.hostname.endsWith('.local')){
+if(window.AURA_SERVER||/^(localhost|127\.|\[::1\]|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname)||location.hostname.endsWith('.local')){
  const rs=document.createElement('script');rs.src='remote.js';rs.onerror=bootDemo;rs.onload=()=>{if(!window.AURA_REMOTE) bootDemo()};document.head.appendChild(rs);setTimeout(bootDemo,4000);
 }else bootDemo();
 </script>
