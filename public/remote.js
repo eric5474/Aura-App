@@ -235,7 +235,7 @@ const AE = {
         }).catch((e) => failed(t, e.message));
         return;
       }
-      audio.src = '/api/stream/' + enc(t.id);
+      audio.src = streamSrc(t.id);
     }
     else if (Math.abs(audio.currentTime - off) > 0.25) audio.currentTime = off;
     const pr = audio.play();
@@ -622,6 +622,68 @@ act = function (n, el, e) {
   return _act2(n, el, e);
 };
 
+
+/* ---------------- JioSaavn account: sign in for Pro quality ---------------- */
+const JKEY = 'aura-jiosaavn-v1';
+let JSA = null;
+try { JSA = JSON.parse(localStorage.getItem(JKEY) || 'null'); } catch (e) {}
+const saveJSA = () => { try { JSA ? localStorage.setItem(JKEY, JSON.stringify(JSA)) : localStorage.removeItem(JKEY); } catch (e) {} };
+const isPro = () => !!(JSA && JSA.pro && (!JSA.until || JSA.until > Date.now()));
+window.AURA_JS_ACCOUNT = () => (JSA && window.AURA_NATIVE ? { session: JSA.session, pro: isPro() } : null); // read by the Android glue
+const streamSrc = (id) => '/api/stream/' + enc(id) + (JSA && JSA.token ? '?acct=' + enc(JSA.token) : '');
+async function jsLogin(username, password) {
+  if (window.AURA_NATIVE) return window.JioSaavn.login(username, password);
+  const r = await fetch('/api/account/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+  let j = {}; try { j = await r.json(); } catch (_) {}
+  if (!r.ok) throw new Error(j.error || `Sign-in failed (${r.status})`);
+  return j;
+}
+const untilText = (t) => t ? ` until ${new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+qualityRow = function () {
+  const pro = isPro();
+  return `<div class="acct-row"><span><b>Streaming quality</b><small>${pro ? 'Highest quality, from your JioSaavn Pro account' : 'Standard quality'}</small></span><span class="qpill">${pro ? '320 kbps' : '128 kbps'}</span></div>`;
+};
+extraAccountRows = function () {
+  if (!JSA) return `<div class="acct-row"><span><b>JioSaavn account</b><small>Sign in with JioSaavn Pro to stream at 320 kbps. Without Pro, AURA stays at 128 kbps.</small></span><button class="btn" data-act="js-connect">Sign In</button></div>`;
+  const pro = isPro();
+  const note = pro ? `Pro${untilText(JSA.until)} · 320 kbps` : (JSA.pro ? 'Pro has ended · 128 kbps' : 'Signed in, but JioSaavn doesn’t show Pro on this account · 128 kbps');
+  const detail = !pro && JSA.fields && JSA.fields.length ? `<details><summary class="muted" style="font-size:12px;cursor:pointer">Have Pro? Show what JioSaavn returned</summary><p class="js-fields">${esc(JSA.fields.join(', '))}</p></details>` : '';
+  return `<div class="acct-row"><span><b>JioSaavn account</b><small${pro || JSA.pro ? '' : ' class="warn"'}>${esc(JSA.name || '')}${JSA.name ? ' · ' : ''}${note}</small>${detail}</span><button class="btn" data-act="js-signout">Sign Out</button></div>`;
+};
+function jsLoginModal(err = '') {
+  openModal(mhead('Sign In to JioSaavn') + `<form id="js-login-form" novalidate><div class="modal-body">
+    <p class="muted" style="margin-top:0">Use the email and password of your JioSaavn account. With JioSaavn Pro, songs stream at 320 kbps; otherwise at 128 kbps. Your password is sent only to JioSaavn and isn’t saved.</p>
+    <label class="field"><span>Email</span><input id="js-user" type="email" autocomplete="username" required></label>
+    <label class="field"><span>Password</span><input id="js-pass" type="password" autocomplete="current-password" required></label>
+    <p class="auth-err" role="alert">${esc(err)}</p>
+    <small class="muted">Signed up with your phone number? JioSaavn’s phone (OTP) sign-in isn’t supported here; set an email password in JioSaavn first.</small>
+  </div><div class="modal-foot"><button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary" type="submit">Sign In</button></div></form>`);
+}
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'js-login-form') return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const btn = e.target.querySelector('button[type=submit]'), errEl = e.target.querySelector('.auth-err');
+  const user = document.getElementById('js-user').value.trim(), pass = document.getElementById('js-pass').value;
+  if (!user || !pass) { errEl.textContent = 'Enter your email and password.'; return; }
+  btn.disabled = true; btn.textContent = 'Signing In…'; errEl.textContent = '';
+  try {
+    const a = await jsLogin(user, pass);
+    JSA = { name: a.name, email: a.email, pro: !!a.pro, until: a.until || 0, fields: a.fields || [], token: a.token, session: window.AURA_NATIVE ? a.session : undefined, at: Date.now() };
+    saveJSA(); closeModal(); renderView(true);
+    if (window.JioSaavn && window.JioSaavn.forgetStream && audio.dataset.id) window.JioSaavn.forgetStream(audio.dataset.id);
+    _toast(isPro() ? 'JioSaavn Pro connected. Songs now stream at 320 kbps' : 'Signed in. JioSaavn doesn’t show Pro on this account, so AURA stays at 128 kbps');
+  } catch (x) {
+    btn.disabled = false; btn.textContent = 'Sign In';
+    errEl.textContent = String(x.message || 'Sign-in failed').replace(/^JioSaavn:?\s*/i, '');
+  }
+}, true);
+const _act3 = act;
+act = function (n, el, e) {
+  if (n === 'js-connect') return jsLoginModal();
+  if (n === 'js-signout') { JSA = null; saveJSA(); renderView(true); _toast('Signed out of JioSaavn. Songs stream at 128 kbps'); return; }
+  return _act3(n, el, e);
+};
+
 /* ---------------- persistence ---------------- */
 persist = function () {
   try {
@@ -662,6 +724,7 @@ async function start() {
   S.love = sv.love || {};
   S.recent = sv.recent || [];
   if (sv.profile) S.profile = sv.profile;
+  if (typeof A !== 'undefined' && A.acct) S.profile.name = A.acct.name;
   S.plays = sv.plays || {}; S.listen = sv.listen || 0;
   if (sv.settings) Object.assign(S.settings, sv.settings);
   if (sv.theme) S.theme = sv.theme;

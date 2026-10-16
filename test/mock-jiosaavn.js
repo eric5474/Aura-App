@@ -102,7 +102,19 @@ http.createServer((req, res) => {
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
       const p = Object.fromEntries(req.method === 'POST' ? new URLSearchParams(body) : u.searchParams);
-      log.push(`${req.method} ${p.__call}`);
+      const cookie = req.headers.cookie || '';
+      log.push(`${req.method} ${p.__call}${p.bitrate ? ' ' + p.bitrate : ''}${/sess=/.test(cookie) ? ' signed-in' : ''}`);
+      if (p.__call === 'user.login') { // pro@test.com / free@test.com, password secret123
+        const ok = /^(pro|free)@test\.com$/.test(p.username || '') && p.password === 'secret123';
+        if (!ok) { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { code: 'INVALID', msg: 'Invalid username or password' } })); }
+        const pro = p.username.startsWith('pro');
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': [`sess=${pro ? 'P' : 'F'}123; Path=/; HttpOnly`, 'geo=DE; Path=/'] });
+        return res.end(JSON.stringify({ data: { uid: 'u1', username: p.username, firstname: pro ? 'Priya' : 'Felix', email: p.username,
+          prstatus: pro ? '1' : '0', pro: pro ? { expiration: String(Math.floor(Date.now() / 1000) + 30 * 86400) } : {} } }));
+      }
+      if (p.__call === 'song.generateAuthToken' && p.bitrate === '320' && !/sess=P123/.test(cookie)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { msg: 'not pro' } }));
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(handle(p.__call, p)));
     });
