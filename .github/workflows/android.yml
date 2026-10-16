@@ -1,10 +1,11 @@
 name: Build Android APK
 
-# Builds AURA for Android on every push to main, or when you press "Run workflow" in the Actions tab.
+# Builds AURA for Android on every push to main, on pull requests, or when you press "Run workflow" in the Actions tab.
 # The APK appears under the run's "Artifacts" section as AURA-android.
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
