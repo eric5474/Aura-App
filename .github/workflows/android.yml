@@ -39,7 +39,7 @@ jobs:
       - name: Create the Android project
         run: npx cap add android
 
-      - name: Add the AURA icon and splash screen
+      - name: Add the AURA icon, splash screen and playback setting
         run: npm run android:icons
 
       - name: Copy web files into the Android project

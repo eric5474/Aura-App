@@ -1036,9 +1036,8 @@ const VIEWS={
     <div class="dbtns"><button class="btn" data-act="edit-profile">${ic('edit')}Edit Profile</button><button class="btn" data-act="settings">${ic('gear')}Settings</button></div></div></header>
    <div class="stats">${stat('Songs played',total.toLocaleString('en-GB'))}${stat('Listening time',listen)}${stat('Loved songs',loved)}${stat('Songs in library',libSongIds().length)}${stat('Playlists',S.playlists.length)}</div>
    <section><div class="shelf-head"><h2>Account</h2></div><div class="acct">
-    <div class="acct-row"><span><b>Music source</b><small>${live?(window.AURA_NATIVE?'JioSaavn catalogue, streamed straight to this phone':'JioSaavn catalogue, streamed through your AURA server'):'Built-in sample songs, generated in your browser'}</small></span><span class="qpill">${live?'JioSaavn':'Sample'}</span></div>
-    <div class="acct-row"><span><b>Streaming quality</b><small>${live?'Standard quality for JioSaavn streams':'Synthesized live, no streaming'}</small></span><span class="qpill">${live?'128 kbps':'Built-in'}</span></div>
-    <div class="acct-row"><span><b>JioSaavn account</b><small>${live?'Signing in with JioSaavn Pro for 320 kbps isn’t available yet. JioSaavn doesn’t offer a sign-in or Pro check that other apps can use, so AURA stays at 128 kbps.':'Available when AURA runs with its server.'}</small></span><span class="qpill off">Not connected</span></div>
+    <div class="acct-row"><span><b>Music library</b><small>${live?(window.AURA_NATIVE?'AURA live library, streamed straight to this phone':'AURA live library, streamed through your AURA server'):'Built-in sample songs, generated in your browser'}</small></span><span class="qpill">${live?'Live':'Sample'}</span></div>
+    <div class="acct-row"><span><b>Streaming quality</b><small>${live?'Standard quality':'Synthesized live, no streaming'}</small></span><span class="qpill">${live?'128 kbps':'Built-in'}</span></div>
    </div></section>
    ${topAr.length?shelf('Your Top Artists',topAr.map(artistTile)):''}
    ${top.length?`<section><div class="shelf-head"><h2>Your Top Songs</h2><span class="sub">By number of plays</span></div><div class="top-songs">${trackList(top,'Your Top Songs',{art:1,noAlb:1})}</div></section>`:`<div class="empty">${ic('note')}<b>Your top songs and artists show up here</b><span>Play some music to get started.</span></div>`}

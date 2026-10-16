@@ -43,4 +43,25 @@ const set = (name, val) => {
 set('colorPrimary', '#111514'); set('colorPrimaryDark', '#111514'); set('colorAccent', '#3AC9BE');
 fs.writeFileSync(colors, xml);
 
-console.log(`AURA icons installed; ${n} splash image(s) replaced.`);
+// Let songs start without waiting for a tap (Android's web view blocks audio that starts after a delay otherwise)
+const cap = JSON.parse(fs.readFileSync(path.join(root, 'capacitor.config.json'), 'utf8'));
+const pkgDir = path.join(root, 'android', 'app', 'src', 'main', 'java', ...cap.appId.split('.'));
+fs.mkdirSync(pkgDir, { recursive: true });
+fs.writeFileSync(path.join(pkgDir, 'MainActivity.java'), `package ${cap.appId};
+
+import android.webkit.WebSettings;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            WebSettings settings = getBridge().getWebView().getSettings();
+            settings.setMediaPlaybackRequiresUserGesture(false);
+        }
+    }
+}
+`);
+
+console.log(`AURA icons installed; ${n} splash image(s) replaced; playback setting applied.`);

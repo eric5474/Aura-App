@@ -16,12 +16,14 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
   const ev = (f, a) => pg.evaluate(f, a);
 
   await pg.goto(BASE);
-  await pg.waitForSelector('text=Trending Now', { timeout: 8000 });
+  await pg.waitForSelector('text=Top Picks for You', { timeout: 8000 });
   ok(await ev(() => window.AURA_REMOTE === true), 'live mode active');
   ok(await ev(() => !Object.keys(TR).some((k) => /^glasshouse/.test(k))), 'sample catalogue removed');
   await pg.waitForTimeout(400); await pg.screenshot({ path: out + '/1-home.png' });
 
-  await pg.click('article.tile[data-act="play-song"]');
+  await ev(() => go('new', undefined, true));
+  await pg.waitForSelector('.top-songs .trow');
+  await pg.click('.top-songs .trow');
   await pg.waitForTimeout(2000);
   const p1 = await ev(() => ({ id: curId(), pos: S.pos, dur: curTrack().dur, playing: S.playing, eq: !!E.ctx }));
   ok(p1.playing && p1.pos > 0.5, `song plays (pos ${p1.pos.toFixed(2)}s of ${p1.dur}s, EQ chain ${p1.eq})`);
@@ -70,19 +72,20 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
 
   await ev(() => go('radio', undefined, true)); await pg.waitForTimeout(300);
   await pg.screenshot({ path: out + '/5-radio.png' });
-  await pg.click('.live .btn'); await pg.waitForTimeout(1300);
+  await pg.click('.live .btn'); await pg.waitForTimeout(2500);
   const st = await ev(() => ({ label: S.label, playing: S.playing }));
-  ok(/Station/.test(st.label) && st.playing, 'featured station plays: ' + st.label);
+  ok(/AURA One/.test(st.label) && st.playing, 'AURA One plays: ' + st.label);
 
   await ev(() => go('genre', 'Romance'));
   await pg.waitForSelector('text=Top Songs', { timeout: 6000 });
   await pg.click('.banner-art [data-act="play-station"]'); await pg.waitForTimeout(1300);
   ok(await ev(() => /Romance Station/.test(S.label)), 'category station plays');
+  ok(!/saavn/i.test(await ev(() => document.body.innerText)), 'no music-service name shown');
 
   await ev(() => openFull()); await pg.waitForTimeout(500);
   await pg.screenshot({ path: out + '/6-nowplaying.png' }); await ev(() => closeFull());
 
-  await pg.reload(); await pg.waitForSelector('text=Trending Now');
+  await pg.reload(); await pg.waitForSelector('text=Top Picks for You');
   await ev(() => go('playlists', undefined, true)); await pg.waitForTimeout(300);
   const pls = await ev(() => libPlaylists().map((p) => p.name + ':' + p.tracks.length).join(', '));
   ok(/Untitled Playlist:2/.test(pls) && /Mock Chart 1/.test(pls), 'library survives reload: ' + pls);
@@ -91,7 +94,7 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
 
   const ph = await b.newPage({ viewport: { width: 390, height: 844 }, colorScheme: 'light' });
   ph.on('pageerror', (e) => fail.push('PHONE ' + e.message));
-  await ph.goto(BASE); await ph.waitForSelector('text=Trending Now'); await ph.waitForTimeout(400);
+  await ph.goto(BASE); await ph.waitForSelector('text=Top Picks for You'); await ph.waitForTimeout(400);
   await ph.screenshot({ path: out + '/8-phone.png' });
   ok(!(await ph.evaluate(() => document.documentElement.scrollWidth > innerWidth)), 'no sideways scroll on phone');
 

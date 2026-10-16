@@ -329,11 +329,16 @@ async function streamUrl(id) {
   if (!mediaRef.has(id)) await songs([id]);
   const ref = mediaRef.get(id);
   if (!ref) throw new Error('This song isn’t available to stream');
-  let tok = await call('song.generateAuthToken', { url: ref, bitrate: BITRATE }, { post: true, v4: false, fresh: true, allowError: true });
-  if (!tok || !tok.auth_url) {
-    tok = await call('song.generateAuthToken', { url: ref, bitrate: BITRATE }, { v4: false, fresh: true, allowError: true });
+  // Ask for a stream link the way the web player does, with a few fallbacks.
+  const tries = [{ post: true, v4: false }, { v4: false }, { v4: true }, { v4: false, ctx: 'android' }];
+  let tok = null, lastErr = null;
+  for (const t of tries) {
+    try {
+      tok = await call('song.generateAuthToken', { url: ref, bitrate: BITRATE }, { ...t, fresh: true, allowError: true });
+      if (tok && tok.auth_url) break;
+    } catch (e) { lastErr = e; }
   }
-  if (!tok || !tok.auth_url) throw new Error('JioSaavn didn’t return a stream for this song');
+  if (!tok || !tok.auth_url) throw lastErr || new Error('This song isn’t available to stream right now');
   streamLinks.set(id, { url: tok.auth_url, exp: Date.now() + 4 * 60 * 1000 });
   return tok.auth_url;
 }
