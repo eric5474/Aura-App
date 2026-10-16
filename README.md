@@ -6,7 +6,7 @@ AURA is a personal music player. This folder holds the app and a small backend t
 
 ## Run it
 
-You need **Node.js 18 or newer** ([nodejs.org](https://nodejs.org)). There's nothing to install with npm.
+You need **Node.js 18 or newer** ([nodejs.org](https://nodejs.org)). The computer version needs nothing from npm.
 
 ```bash
 cd aura
@@ -33,6 +33,36 @@ Open `http://<your-computer's-IP>:3000` on the phone. Use **Add to Home Screen**
 | `HOST` | `127.0.0.1` | Use `0.0.0.0` to allow other devices on your network |
 | `AURA_LANGUAGES` | `hindi,english` | Languages for the home feed and stations, e.g. `hindi,english,punjabi,tamil` |
 | `AURA_BITRATE` | `128` | Stream bitrate requested from JioSaavn |
+
+## Android app (APK)
+
+The Android app works on its own. The phone talks to JioSaavn directly, so no computer or server is needed.
+
+**Get the APK:**
+1. Push to the `main` branch, or open the **Actions** tab, choose **Build Android APK** and press **Run workflow**.
+2. Wait about 5–8 minutes for the run to turn green.
+3. Open the run, scroll to **Artifacts** and download **AURA-android**. It's a zip containing `AURA.apk`.
+
+**Install it on your phone:**
+1. Copy `AURA.apk` to the phone, or download the artifact on the phone and unzip it there.
+2. Tap the APK. When Android asks, allow **Install unknown apps** for your browser or file manager.
+3. Open AURA from your home screen.
+
+To update, install a newer APK over the old one. Your library and playlists stay.
+
+**Differences from the computer version:**
+- The equalizer can't change songs in the app, because they play straight from JioSaavn. Volume, queue, lyrics, stations and everything else work.
+- It's a debug build for your own phone. Don't share it or put it on the Play Store.
+- The Android back button closes menus and full-screen views, then goes back a screen. On Home it sends AURA to the background, so music keeps playing.
+
+**Build it on your own computer instead** (needs Android Studio and JDK 17):
+```bash
+npm install
+npm run build:app
+npx cap add android        # first time only
+npm run android:icons      # first time only
+npm run android:apk        # APK at android/app/build/outputs/apk/debug/app-debug.apk
+```
 
 ## What's connected
 
@@ -75,12 +105,17 @@ Responses from JioSaavn are cached in memory for 10 minutes. Stream links are fe
 ## Files
 
 ```
-server.js            web server, API routes, audio streaming
+server.js            web server, API routes, audio streaming (computer version)
 jiosaavn.js          JioSaavn client and data clean-up
 public/index.html    the AURA app (it also runs on its own with sample songs)
 public/remote.js     switches the app to the live catalogue when the server is running
 public/logo-*.png    app icons; manifest.webmanifest for Add to Home Screen
 test/                a stand-in JioSaavn server and an automated browser test
+app/native.js        Android app glue: calls JioSaavn from the phone, back button
+scripts/             builds the app's web files (www/) and installs icons
+resources/android/   launcher icons and splash screen made from the AURA logo
+capacitor.config.json  Android app settings (name, id, colours)
+.github/workflows/   the GitHub Actions job that builds the APK
 ```
 
 ## Troubleshooting

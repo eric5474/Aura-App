@@ -16,6 +16,7 @@ let HOME = null, renderKeys = new Set();
 
 /* ---------------- API ---------------- */
 async function api(path) {
+  if (window.AURA_API) return window.AURA_API(path); // Android app: JioSaavn is called directly from the phone
   const r = await fetch(path, { headers: { Accept: 'application/json' } });
   let j = {};
   try { j = await r.json(); } catch (_) {}
@@ -195,6 +196,8 @@ const AE = {
   ctx: null, ok: true, track: null, playing: false, offset: 0, want: 0,
   init() {
     if (this.ctx || !this.ok) return;
+    // In the Android app the phone plays JioSaavn's audio directly, so the equalizer can't process it.
+    if (window.AURA_NATIVE) { this.ok = false; return; }
     try {
       const C = window.AudioContext || window.webkitAudioContext;
       const c = this.ctx = new C();
@@ -211,7 +214,19 @@ const AE = {
     this.init();
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
     this.track = t; this.playing = true; this.offset = off;
-    if (audio.dataset.id !== t.id) { audio.dataset.id = t.id; this.want = off; audio.src = '/api/stream/' + enc(t.id); }
+    if (audio.dataset.id !== t.id) {
+      audio.dataset.id = t.id; audio.dataset.retried = ''; this.want = off;
+      if (window.AURA_STREAM_URL) {
+        const id = t.id;
+        window.AURA_STREAM_URL(id).then((u) => {
+          if (audio.dataset.id !== id) return;
+          audio.src = u;
+          if (this.playing) audio.play().catch(() => {});
+        }).catch((e) => { toast(e.message); if (S.playing) setTimeout(next, 700); });
+        return;
+      }
+      audio.src = '/api/stream/' + enc(t.id);
+    }
     else if (Math.abs(audio.currentTime - off) > 0.25) audio.currentTime = off;
     const pr = audio.play();
     if (pr) pr.catch((err) => { if (err && err.name === 'NotAllowedError') { S.playing = false; this.playing = false; updateAll(); toast('Press Play to start listening'); } });
@@ -231,6 +246,14 @@ audio.addEventListener('ended', () => { if (S.playing && curId() === audio.datas
 audio.addEventListener('error', () => {
   if (!audio.dataset.id || !audio.getAttribute('src')) return;
   const t = TR[audio.dataset.id];
+  if (window.AURA_STREAM_URL && t && !audio.dataset.retried) { // stream link expired: get a fresh one once
+    const id = t.id, at = audio.currentTime;
+    audio.dataset.retried = '1';
+    window.JioSaavn.forgetStream(id);
+    window.AURA_STREAM_URL(id).then((u) => { if (audio.dataset.id !== id) return; E.want = at; audio.src = u; if (S.playing) audio.play().catch(() => {}); })
+      .catch(() => { toast(`Couldn’t play “${t.title}”. Skipping.`); if (S.playing) setTimeout(next, 700); });
+    return;
+  }
   toast(`Couldn’t play “${t ? t.title : 'this song'}”. Skipping.`);
   audio.dataset.id = '';
   if (S.playing) setTimeout(next, 700);
@@ -545,9 +568,11 @@ openMenu = function (key, pos) {
 const _settingsModal = settingsModal;
 settingsModal = function (tab) {
   _settingsModal(tab);
+  const snd = document.querySelector('#modal-root fieldset[data-tab="sound"]');
+  if (snd && window.AURA_NATIVE) snd.innerHTML = `<p><b>Equalizer</b></p><p class="muted">In the Android app, songs play straight from JioSaavn, so the equalizer can’t change them. It works when you use AURA on your computer with <code>node server.js</code>. Your phone’s own sound settings still apply.</p>`;
   const f = document.querySelector('#modal-root fieldset[data-tab="about"]');
   if (f) f.innerHTML = `<img class="about-logo" src="${LOGO}" alt="AURA logo"><p><b>AURA</b> · <i>Listen to your heart’s desire.</i></p>
-    <p>You’re listening to the live JioSaavn catalogue, streamed through the AURA server on this computer for your personal use.</p>
+    <p>${window.AURA_NATIVE ? 'You’re listening to the live JioSaavn catalogue, streamed straight to this phone for your personal use.' : 'You’re listening to the live JioSaavn catalogue, streamed through the AURA server on this computer for your personal use.'}</p>
     <p class="muted">Your library, playlists, loved songs and settings are saved in this browser. Lyrics come from JioSaavn and aren’t time-synced.</p>
     <button type="button" class="btn" data-act="reset-live" style="align-self:flex-start">${ic('trash')}Clear Library</button>`;
 };
