@@ -58,10 +58,10 @@ function readJSON(req) {
     req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(parts).toString('utf8') || '{}')); } catch (_) { resolve({}); } });
   });
 }
-async function accountLogin(req, res) {
+async function accountConnect(req, res) {
   const b = await readJSON(req);
   try {
-    const a = await js.login(b.username, b.password);
+    const a = await js.accountFromSession(b.session);
     const until = a.until || 0;
     return sendJSON(res, 200, { ok: true, name: a.name, email: a.email, pro: a.pro, until, fields: a.pro ? undefined : a.fields,
       token: seal({ session: a.session, pro: a.pro, until, name: a.name, at: Date.now() }) });
@@ -193,7 +193,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="AURA", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('AURA is private. Enter your AURA password (any username).');
   }
-  if (req.method === 'POST' && u.pathname === '/api/account/login') return accountLogin(req, res);
+  if (req.method === 'POST' && u.pathname === '/api/account/connect') return accountConnect(req, res);
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   if (u.pathname === '/api/account/status') { const a = acctOf(req, u.searchParams); return sendJSON(res, 200, a ? { signedIn: true, name: a.name, pro: !!a.pro, until: a.until || 0 } : { signedIn: false }); }
   const sm = u.pathname.match(/^\/api\/stream\/([^/]+)$/);

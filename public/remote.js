@@ -631,12 +631,29 @@ const saveJSA = () => { try { JSA ? localStorage.setItem(JKEY, JSON.stringify(JS
 const isPro = () => !!(JSA && JSA.pro && (!JSA.until || JSA.until > Date.now()));
 window.AURA_JS_ACCOUNT = () => (JSA && window.AURA_NATIVE ? { session: JSA.session, pro: isPro() } : null); // read by the Android glue
 const streamSrc = (id) => '/api/stream/' + enc(id) + (JSA && JSA.token ? '?acct=' + enc(JSA.token) : '');
-async function jsLogin(username, password) {
-  if (window.AURA_NATIVE) return window.JioSaavn.login(username, password);
-  const r = await fetch('/api/account/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+const JioLogin = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.JioLogin;
+async function jsConnect(cookie) {
+  if (window.AURA_NATIVE) return window.JioSaavn.accountFromSession(cookie);
+  const r = await fetch('/api/account/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: cookie }) });
   let j = {}; try { j = await r.json(); } catch (_) {}
   if (!r.ok) throw new Error(j.error || `Sign-in failed (${r.status})`);
   return j;
+}
+function jsConnected(a) {
+  JSA = { name: a.name, email: a.email, pro: !!a.pro, until: a.until || 0, fields: a.fields || [], token: a.token, session: window.AURA_NATIVE ? a.session : undefined, at: Date.now() };
+  saveJSA(); closeModal(); renderView(true);
+  if (window.JioSaavn && window.JioSaavn.forgetStream && audio.dataset.id) window.JioSaavn.forgetStream(audio.dataset.id);
+  _toast(isPro() ? 'JioSaavn Pro connected. Songs now stream at 320 kbps' : 'Signed in. JioSaavn doesn’t show Pro on this account, so AURA stays at 128 kbps');
+}
+const cleanMsg = (x) => String((x && x.message) || x || 'Sign-in failed').replace(/^JioSaavn:?\s*/i, '');
+// Android app: JioSaavn's own website opens inside the app; after signing in there (phone number + code), the app picks up the sign-in.
+async function jsNativeSignIn() {
+  const P = JioLogin();
+  if (!P) return jsLoginModal('This version of the app can’t open JioSaavn’s sign-in. Install the latest AURA APK.');
+  let r;
+  try { r = await P.open(); } catch (x) { return; } // closed without signing in
+  try { jsConnected(await jsConnect(r.cookie)); }
+  catch (x) { jsLoginModal(cleanMsg(x)); }
 }
 const untilText = (t) => t ? ` until ${new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
 qualityRow = function () {
@@ -651,36 +668,40 @@ extraAccountRows = function () {
   return `<div class="acct-row"><span><b>JioSaavn account</b><small${pro || JSA.pro ? '' : ' class="warn"'}>${esc(JSA.name || '')}${JSA.name ? ' · ' : ''}${note}</small>${detail}</span><button class="btn" data-act="js-signout">Sign Out</button></div>`;
 };
 function jsLoginModal(err = '') {
+  if (window.AURA_NATIVE) {
+    openModal(mhead('Sign In to JioSaavn') + `<div class="modal-body">
+      <p class="muted" style="margin-top:0">JioSaavn’s own sign-in page opens inside AURA. Sign in there with your phone number and code (or any way JioSaavn offers), then tap <b>Done</b>. With JioSaavn Pro, songs stream at 320 kbps; otherwise at 128 kbps.</p>
+      <p class="auth-err" role="alert">${esc(err)}</p></div>
+      <div class="modal-foot"><button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary" data-act="js-native-open">Open JioSaavn</button></div>`);
+    return;
+  }
   openModal(mhead('Sign In to JioSaavn') + `<form id="js-login-form" novalidate><div class="modal-body">
-    <p class="muted" style="margin-top:0">Use the email and password of your JioSaavn account. With JioSaavn Pro, songs stream at 320 kbps; otherwise at 128 kbps. Your password is sent only to JioSaavn and isn’t saved.</p>
-    <label class="field"><span>Email</span><input id="js-user" type="email" autocomplete="username" required></label>
-    <label class="field"><span>Password</span><input id="js-pass" type="password" autocomplete="current-password" required></label>
+    <p class="muted" style="margin-top:0">Browsers don’t let one website read another website’s sign-in, so on the web this takes one copy and paste. You only do it once per browser. (In the Android app it’s automatic.)</p>
+    <ol class="js-steps">
+      <li><a href="https://www.jiosaavn.com/" target="_blank" rel="noopener">Open jiosaavn.com</a> on a computer and sign in with your phone number and code.</li>
+      <li>Press <b>F12</b>, open the <b>Network</b> tab and reload the page.</li>
+      <li>Click the first request (<code>www.jiosaavn.com</code>), find <b>Request Headers → cookie</b>, right-click it and choose <b>Copy value</b>.</li>
+      <li>Paste it below.</li>
+    </ol>
+    <label class="field"><span>JioSaavn cookie</span><textarea id="js-cookie" rows="3" spellcheck="false" autocomplete="off" placeholder="Paste here"></textarea><small>This is your JioSaavn sign-in. Treat it like a password: paste it only into your own AURA. It’s kept sealed in this browser.</small></label>
     <p class="auth-err" role="alert">${esc(err)}</p>
-    <small class="muted">Signed up with your phone number? JioSaavn’s phone (OTP) sign-in isn’t supported here; set an email password in JioSaavn first.</small>
-  </div><div class="modal-foot"><button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary" type="submit">Sign In</button></div></form>`);
+  </div><div class="modal-foot"><button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary" type="submit">Connect</button></div></form>`);
 }
 document.addEventListener('submit', async (e) => {
   if (e.target.id !== 'js-login-form') return;
   e.preventDefault(); e.stopImmediatePropagation();
   const btn = e.target.querySelector('button[type=submit]'), errEl = e.target.querySelector('.auth-err');
-  const user = document.getElementById('js-user').value.trim(), pass = document.getElementById('js-pass').value;
-  if (!user || !pass) { errEl.textContent = 'Enter your email and password.'; return; }
-  btn.disabled = true; btn.textContent = 'Signing In…'; errEl.textContent = '';
-  try {
-    const a = await jsLogin(user, pass);
-    JSA = { name: a.name, email: a.email, pro: !!a.pro, until: a.until || 0, fields: a.fields || [], token: a.token, session: window.AURA_NATIVE ? a.session : undefined, at: Date.now() };
-    saveJSA(); closeModal(); renderView(true);
-    if (window.JioSaavn && window.JioSaavn.forgetStream && audio.dataset.id) window.JioSaavn.forgetStream(audio.dataset.id);
-    _toast(isPro() ? 'JioSaavn Pro connected. Songs now stream at 320 kbps' : 'Signed in. JioSaavn doesn’t show Pro on this account, so AURA stays at 128 kbps');
-  } catch (x) {
-    btn.disabled = false; btn.textContent = 'Sign In';
-    errEl.textContent = String(x.message || 'Sign-in failed').replace(/^JioSaavn:?\s*/i, '');
-  }
+  const cookie = document.getElementById('js-cookie').value.trim();
+  if (!cookie) { errEl.textContent = 'Paste the cookie you copied from jiosaavn.com.'; return; }
+  btn.disabled = true; btn.textContent = 'Connecting…'; errEl.textContent = '';
+  try { jsConnected(await jsConnect(cookie)); }
+  catch (x) { btn.disabled = false; btn.textContent = 'Connect'; errEl.textContent = cleanMsg(x); }
 }, true);
 const _act3 = act;
 act = function (n, el, e) {
   if (n === 'js-connect') return jsLoginModal();
-  if (n === 'js-signout') { JSA = null; saveJSA(); renderView(true); _toast('Signed out of JioSaavn. Songs stream at 128 kbps'); return; }
+  if (n === 'js-native-open') { closeModal(); return jsNativeSignIn(); }
+  if (n === 'js-signout') { JSA = null; saveJSA(); if (JioLogin() && JioLogin().signOut) JioLogin().signOut().catch(() => {}); renderView(true); _toast('Signed out of JioSaavn. Songs stream at 128 kbps'); return; }
   return _act3(n, el, e);
 };
 
