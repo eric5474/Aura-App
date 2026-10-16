@@ -16,6 +16,7 @@ let HOME = null, renderKeys = new Set();
 
 /* ---------------- API ---------------- */
 async function api(path) {
+  if (window.AURA_API) return window.AURA_API(path); // Android app: JioSaavn is called directly from the phone
   const r = await fetch(path, { headers: { Accept: 'application/json' } });
   let j = {};
   try { j = await r.json(); } catch (_) {}
@@ -25,6 +26,12 @@ async function api(path) {
 const enc = encodeURIComponent;
 const hue = (id) => hash(String(id)) % 360;
 const safeId = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, '_');
+// AURA shows its own name everywhere; the music service behind it stays out of sight.
+const brand = (v) => (v == null ? v : String(v).replace(/jio\s?saavn(\s+pro)?/gi, 'AURA'));
+const cleanErr = (m) => String(m || '').replace(/Couldn.t reach JioSaavn[^)]*\)?/i, 'Couldn’t connect. Check your internet connection')
+  .replace(/JioSaavn \S+ failed with HTTP (\d+)/i, 'The music library didn’t respond ($1)').replace(/JioSaavn:?\s*/gi, '').replace(/jio\s?saavn/gi, 'the music library');
+const _toast = toast;
+toast = function (m) { _toast(cleanErr(m)); };
 const niceDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? dLong(d) : (d || '');
 
 /* ---------------- ingest JioSaavn data into AURA's maps ---------------- */
@@ -68,7 +75,7 @@ function ingAlbum(a) {
     type: a.songCount === 1 ? 'Single' : (x.type || 'Album'), img: a.image || x.img, lang: a.language || x.lang,
     songCount: a.songCount || x.songCount, url: a.url || x.url,
   });
-  if (a.description) x.note = a.description;
+  if (a.description) x.note = brand(a.description);
   if (a.copyright) x.copyright = a.copyright;
   if (a.songs) {
     x.tracks = a.songs.map((s) => { const tid = ingSong(s); if (tid) TR[tid].album = id; return tid; }).filter(Boolean);
@@ -82,8 +89,8 @@ function ingPlaylist(p) {
   if (!p || !p.id) return null;
   const id = String(p.id);
   const x = RPL[id] || (RPL[id] = { id, kind: 'ed', hue: hue(id), tracks: [] });
-  Object.assign(x, { name: p.title || x.name, cur: p.curator || p.subtitle || x.cur || 'JioSaavn', img: p.image || x.img, count: p.songCount || x.count });
-  if (p.description || p.subtitle) x.desc = p.description || p.subtitle;
+  Object.assign(x, { name: brand(p.title) || x.name, cur: 'AURA', img: p.image || x.img, count: p.songCount || x.count });
+  if (p.description) x.desc = brand(p.description);
   if (p.songs) { x.tracks = p.songs.map(ingSong).filter(Boolean); x.full = 1; }
   return id;
 }
@@ -100,7 +107,7 @@ function need(key, fn) {
   return false;
 }
 const loading = (label = 'Loading…') => `<div class="empty"><span class="spin" role="status" aria-label="${esc(label)}"></span><b>${esc(label)}</b></div>`;
-const errBox = (key, what = 'this') => `<div class="empty">${ic('info')}<b>Couldn’t load ${esc(what)}</b><span>${esc(ERR[key] || 'JioSaavn didn’t respond.')}</span><button class="btn" data-act="retry" data-k="${esc(key)}">Try Again</button></div>`;
+const errBox = (key, what = 'this') => `<div class="empty">${ic('info')}<b>Couldn’t load ${esc(what)}</b><span>${esc(cleanErr(ERR[key]) || 'Please try again in a moment.')}</span><button class="btn" data-act="retry" data-k="${esc(key)}">Try Again</button></div>`;
 const ensure = {
   album: (id) => (AL[id] && AL[id].full) ? Promise.resolve() : api('/api/albums/' + enc(id)).then(ingAlbum).then(() => LOADED.add('album:' + id)),
   playlist: (id) => (RPL[id] && RPL[id].full) ? Promise.resolve() : api('/api/playlists/' + enc(id)).then(ingPlaylist).then(() => LOADED.add('pl:' + id)),
@@ -120,6 +127,7 @@ async function loadHome() {
   HOME.sections.forEach((s) => s.items.forEach(ingCard));
 }
 function ingCard(c) {
+  c.title = brand(c.title); c.subtitle = brand(c.subtitle);
   if (c.type === 'song') c.ref = ingSong(c.song);
   else if (c.type === 'album') c.ref = ingAlbum(c.album);
   else if (c.type === 'playlist') c.ref = ingPlaylist(c.playlist);
@@ -175,7 +183,7 @@ mixes = function () {
   const replay = [...new Set(S.history)].filter(ok).slice(0, 25);
   return [
     { id: 'mix-fav', kind: 'mix', name: 'Favourites Mix', cur: 'Made for you', desc: 'Songs you love and songs in your library.', hue: 330, tracks: fav },
-    { id: 'mix-new', kind: 'mix', name: 'Trending Mix', cur: 'Made for you', desc: 'What’s trending on JioSaavn right now.', hue: 180, tracks: trend },
+    { id: 'mix-new', kind: 'mix', name: 'Trending Mix', cur: 'Made for you', desc: 'What’s trending right now.', hue: 180, tracks: trend },
     { id: 'mix-chill', kind: 'mix', name: 'Replay Mix', cur: 'Made for you', desc: 'The songs you played most recently.', hue: 150, tracks: replay },
   ].filter((m) => m.tracks.length);
 };
@@ -188,6 +196,7 @@ recentTile = function (x) {
 };
 
 /* ---------------- playback: stream through the backend ---------------- */
+const SILENT = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
 const audio = new Audio();
 audio.preload = 'auto';
 let endGuard = { id: null, at: 0 };
@@ -195,6 +204,8 @@ const AE = {
   ctx: null, ok: true, track: null, playing: false, offset: 0, want: 0,
   init() {
     if (this.ctx || !this.ok) return;
+    // In the Android app the phone plays JioSaavn's audio directly, so the equalizer can't process it.
+    if (window.AURA_NATIVE) { this.ok = false; return; }
     try {
       const C = window.AudioContext || window.webkitAudioContext;
       const c = this.ctx = new C();
@@ -211,7 +222,21 @@ const AE = {
     this.init();
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
     this.track = t; this.playing = true; this.offset = off;
-    if (audio.dataset.id !== t.id) { audio.dataset.id = t.id; this.want = off; audio.src = '/api/stream/' + enc(t.id); }
+    if (audio.dataset.id !== t.id) {
+      audio.dataset.id = t.id; audio.dataset.retried = ''; this.want = off;
+      if (window.AURA_STREAM_URL) {
+        const id = t.id;
+        // Start a silent clip inside the tap so Android lets this player start the real song a moment later.
+        if (!audio.dataset.unlocked) { audio.dataset.unlocked = '1'; audio.src = SILENT; const p0 = audio.play(); if (p0) p0.catch(() => {}); }
+        window.AURA_STREAM_URL(id).then((u) => {
+          if (audio.dataset.id !== id) return;
+          audio.src = u;
+          if (this.playing) audio.play().catch(() => {});
+        }).catch((e) => failed(t, e.message));
+        return;
+      }
+      audio.src = '/api/stream/' + enc(t.id);
+    }
     else if (Math.abs(audio.currentTime - off) > 0.25) audio.currentTime = off;
     const pr = audio.play();
     if (pr) pr.catch((err) => { if (err && err.name === 'NotAllowedError') { S.playing = false; this.playing = false; updateAll(); toast('Press Play to start listening'); } });
@@ -229,12 +254,32 @@ audio.addEventListener('loadedmetadata', () => {
 });
 audio.addEventListener('ended', () => { if (S.playing && curId() === audio.dataset.id) onEnded(); });
 audio.addEventListener('error', () => {
-  if (!audio.dataset.id || !audio.getAttribute('src')) return;
+  if (!audio.dataset.id || !audio.getAttribute('src') || audio.src.startsWith('data:')) return;
   const t = TR[audio.dataset.id];
-  toast(`Couldn’t play “${t ? t.title : 'this song'}”. Skipping.`);
+  if (window.AURA_STREAM_URL && t && !audio.dataset.retried) { // stream link expired: get a fresh one once
+    const id = t.id, at = audio.currentTime;
+    audio.dataset.retried = '1';
+    window.JioSaavn.forgetStream(id);
+    window.AURA_STREAM_URL(id).then((u) => { if (audio.dataset.id !== id) return; E.want = at; audio.src = u; if (S.playing) audio.play().catch(() => {}); })
+      .catch((e) => failed(t, e.message));
+    return;
+  }
+  const code = audio.error ? audio.error.code : 0;
   audio.dataset.id = '';
-  if (S.playing) setTimeout(next, 700);
+  const why = window.AURA_STREAM_URL
+    ? Promise.resolve(code === 4 ? 'the audio couldn’t be loaded. It may not be licensed in your country' : `audio error ${code}`)
+    : api('/api/streamcheck/' + enc(t ? t.id : '')).then((r) => (r.ok ? `audio error ${code}` : r.error)).catch(() => `audio error ${code}`);
+  why.then((w) => failed(t, w));
 });
+// Show why a song failed; skip ahead, but stop after three failures in a row instead of racing through the queue.
+let failCount = 0;
+audio.addEventListener('playing', () => { failCount = 0; });
+function failed(t, why) {
+  failCount++;
+  toast(`Couldn’t play “${t ? t.title : 'this song'}”: ${why}`);
+  if (failCount >= 3) { S.playing = false; E.playing = false; updateAll(); return; }
+  if (S.playing) setTimeout(next, 1500);
+}
 audio.addEventListener('waiting', () => { const s = document.querySelector('.lcd-title'); if (s) s.dataset.wait = '1'; });
 const _onEnded = onEnded;
 onEnded = function () {
@@ -302,13 +347,14 @@ function playFeatured(name, lang, kind, image) {
     persist();
   }).catch((e) => toast(e.message));
 }
-playStation = function (term) {
+playStation = function (term, label) {
   const r = SR[term], seed = r && r.songs && r.songs[0];
-  if (!seed) return playFeatured(term, '', 'featured', '');
-  toast(`Starting ${term} station…`);
+  if (!r) { toast(`Starting ${label || term + ' station'}…`); return api('/api/search?q=' + enc(term)).then((x) => { SR[term] = x; if (x.songs && x.songs.length) playStation(term, label); else toast('No songs found for ' + term); }).catch((e) => toast(e.message)); }
+  if (!seed) return toast('No songs found for ' + term);
+  if (!label) toast(`Starting ${term} station…`);
   const first = r.songs.slice(0, 5).map(ingSong).filter(Boolean);
-  radioFrom(first[0]).then((ids) => { S.shuffle = false; playList([...new Set([...first, ...ids])], 0, `${term} Station`); })
-    .catch(() => { S.shuffle = false; playList(first, 0, `${term} Station`); });
+  radioFrom(first[0]).then((ids) => { S.shuffle = false; playList([...new Set([...first, ...ids])], 0, label || `${term} Station`); })
+    .catch(() => { S.shuffle = false; playList(first, 0, label || `${term} Station`); });
 };
 
 /* ---------------- lyrics (plain text from JioSaavn, not time-synced) ---------------- */
@@ -337,7 +383,7 @@ infoModal = function (id) {
    <div class="modal-body"><div class="info-head">${albumArt(t.album)}<div><b>${esc(t.title)}</b><span class="muted">${esc(t.artistsText || ARTISTS[t.artist].name)}</span></div></div>
    <dl class="kv">${row('Album', esc(a.title || ''))}${row('Artists', esc(t.artistsText || ''))}${row('Released', esc(niceDate(t.releaseDate) || t.year || ''))}${row('Language', esc(t.lang ? cap(t.lang) : ''))}
    ${row('Duration', fmt(t.dur))}${row('Label', esc(t.label || ''))}${row('Lyrics', t.lines ? 'Available' : t.hasLyrics ? 'Available' : 'Not available')}${row('Copyright', esc(t.copyright || ''))}
-   ${row('Source', t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener" class="link">Open on JioSaavn</a>` : 'JioSaavn')}</dl></div>
+   </dl></div>
    <div class="modal-foot"><button class="btn" data-act="close-modal">Done</button></div>`);
 };
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -368,59 +414,76 @@ const sectionShelf = (s, more) => shelf(esc(s.title), s.items.map(cardTile).filt
 const secByKey = (re) => HOME ? HOME.sections.filter((s) => re.test(s.key)) : [];
 const allCards = (type) => HOME ? HOME.sections.flatMap((s) => s.items).filter((c) => c.type === type) : [];
 
-/* ---------------- views ---------------- */
+/* ---------------- views: AURA's own layout, filled with the live library ---------------- */
 const tagline = '<p class="tagline">Listen to your heart’s desire</p>';
-VIEWS.home = function () {
+const uniq = (a) => [...new Set(a.filter(Boolean))];
+const feedRefs = (type) => uniq((HOME ? HOME.sections : []).flatMap((s) => s.items).filter((c) => c.type === type).map((c) => c.ref));
+const feedStations = () => (HOME ? HOME.sections : []).flatMap((s) => s.items).filter((c) => c.type === 'station');
+const feedArtists = () => uniq([...feedRefs('song').map((t) => TR[t] && TR[t].artist), ...feedRefs('album').map((a) => AL[a] && AL[a].artist), ...feedRefs('artist')])
+  .filter((a) => ARTISTS[a] && !a.startsWith('n_'));
+function homeWait(title, sub) {
   const n = need('home', loadHome);
-  if (n === 'err') return head('Home') + tagline + errBox('home', 'JioSaavn');
-  if (!n) return head('Home') + tagline + loading('Loading what’s new on JioSaavn…');
-  const firstOf = (t) => allCards(t)[0];
-  const mx = mixes();
+  if (n === 'err') return head(title, sub) + errBox('home', 'your music');
+  if (!n) return head(title, sub) + (title === 'Home' ? tagline : '') + loading();
+  return null;
+}
+const heroAlbum = (id, label) => `<article class="hero-card" data-go="album" data-id="${esc(id)}" tabindex="0"><div class="hero-label">${label}</div><div class="hero-art">${albumArt(id)}</div><div class="hero-cap"><b>${esc(AL[id].title)}</b><span>${esc((ARTISTS[AL[id].artist] || {}).name || '')}</span></div></article>`;
+const heroPl = (p, label) => `<article class="hero-card" data-go="playlist" data-id="${esc(p.id)}" tabindex="0"><div class="hero-label">${label}</div><div class="hero-art">${plArt(p)}</div><div class="hero-cap"><b>${esc(p.name)}</b><span>${esc(p.desc || p.cur || '')}</span></div></article>`;
+const heroLive = (label) => { const { show } = liveShow(); return `<article class="hero-card" data-act="play-live" tabindex="0"><div class="hero-label">${label}</div><div class="hero-art">${liveArt('AURA One · Live', esc(show[0]))}</div><div class="hero-cap"><b>${esc(show[0])}</b><span>${esc(show[1])} · Listen live</span></div></article>`; };
+const stationTiles = () => feedStations().filter((c) => c.station.kind !== 'artist').map((c) => stationCard(c));
+
+VIEWS.home = function () {
+  const wait = homeWait('Home'); if (wait) return wait;
+  const mx = mixes(), albums = feedRefs('album'), pls = feedRefs('playlist').map(plById).filter(Boolean);
   const loved = Object.keys(S.love).filter((k) => S.love[k] === 1 && TR[k]).slice(0, 8);
+  const picks = [mx[0] ? heroPl(mx[0], 'Made for you') : pls[0] ? heroPl(pls[0], 'Playlist') : '', albums[0] ? heroAlbum(albums[0], 'New release') : '', heroLive('Live now')].join('');
   return head('Home') + tagline +
-    `<section><div class="shelf-head" style="margin-top:8px"><h2>Top Picks for You</h2></div><div class="heroes">
-      ${heroOf(firstOf('playlist'), 'Top chart')}${heroOf(firstOf('album'), 'New release')}${heroOf(firstOf('station') || firstOf('song'), firstOf('station') ? 'Station' : 'Trending')}</div></section>
-     ${shelf('Recently Played', S.recent.map(recentTile).filter(Boolean))}
-     ${HOME.sections.filter((s) => s.items.length).map((s) => sectionShelf(s)).join('')}
-     ${shelf('Made for You', mx.map((m) => plTile(m, m.desc)), 'madeforyou')}
-     ${loved.length ? `<section><div class="shelf-head"><h2>Songs You Love</h2></div><div class="top-songs">${trackList(loved, 'Songs You Love', { art: 1, noAlb: 1 })}</div></section>` : ''}`;
+    `<section><div class="shelf-head" style="margin-top:8px"><h2>Top Picks for You</h2></div><div class="heroes">${picks}</div></section>` +
+    shelf('Recently Played', S.recent.map(recentTile).filter(Boolean)) +
+    shelf('Made for You', mx.map((m) => plTile(m, m.desc)), 'madeforyou') +
+    shelf('New Releases', albums.slice(0, 12).map((id) => albumTile(id)), 'new') +
+    (loved.length ? `<section><div class="shelf-head"><h2>Songs You Love</h2></div><div class="top-songs">${trackList(loved, 'Songs You Love', { art: 1, noAlb: 1 })}</div></section>` : '') +
+    shelf('Playlists for You', pls.map((p) => plTile(p))) +
+    shelf('Stations for You', stationTiles()) +
+    shelf('Artists You Might Like', feedArtists().slice(0, 12).map(artistTile));
 };
 VIEWS.new = function () {
-  const n = need('home', loadHome);
-  if (n === 'err') return head('New') + errBox('home', 'new releases');
-  if (!n) return head('New') + loading();
-  const newSecs = secByKey(/new|trend|release/i);
-  const albums = [...new Set(newSecs.flatMap((s) => s.items).filter((c) => c.type === 'album').map((c) => c.ref))];
-  const songsNew = [...new Set(newSecs.flatMap((s) => s.items).filter((c) => c.type === 'song').map((c) => c.ref))].slice(0, 12);
-  return head('New', 'Fresh releases and what’s trending on JioSaavn.') +
-    (albums.length ? `<section><div class="shelf-head" style="margin-top:8px"><h2>New Releases</h2></div><div class="grid">${albums.map((id) => albumTile(id)).join('')}</div></section>` : '') +
-    (songsNew.length ? `<section><div class="shelf-head"><h2>Hot Tracks</h2></div><div class="top-songs">${trackList(songsNew, 'Hot Tracks', { art: 1, noAlb: 1 })}</div></section>` : '') +
-    secByKey(/chart/i).map((s) => sectionShelf(s)).join('') + secByKey(/top_playlists/i).map((s) => sectionShelf(s)).join('');
+  const sub = 'The latest releases, updated every day.';
+  const wait = homeWait('New', sub); if (wait) return wait;
+  const albums = feedRefs('album'), hot = feedRefs('song').slice(0, 10), pls = feedRefs('playlist').map(plById).filter(Boolean);
+  return head('New', sub) +
+    (albums.length ? `<section><div class="shelf-head" style="margin-top:8px"><h2>New Releases</h2></div><div class="grid">${albums.map((id) => albumTile(id, esc((ARTISTS[AL[id].artist] || {}).name || ''))).join('')}</div></section>` : '') +
+    (hot.length ? `<section><div class="shelf-head"><h2>Hot Tracks</h2></div><div class="top-songs">${trackList(hot, 'Hot Tracks', { art: 1, noAlb: 1 })}</div></section>` : '') +
+    shelf('Updated Playlists', pls.map((p) => plTile(p, 'Updated this week')));
 };
+// AURA One's shows play a station built from these search terms
+const SHOW_TERMS = { pop: 'Bollywood', indie: 'Indie', jazz: 'Jazz', lofi: 'Lo-Fi', electronic: 'EDM', rnb: 'R&B', rock: 'Rock', hiphop: 'Hip Hop', synthwave: 'Retro', ambient: 'Instrumental', classical: 'Classical' };
+playLive = function () { const { show } = liveShow(); playStation(SHOW_TERMS[show[2][0]] || 'Bollywood', `AURA One · ${show[0]}`); };
 VIEWS.radio = function () {
-  const n = need('home', loadHome);
-  if (n === 'err') return head('Radio') + errBox('home', 'radio stations');
-  if (!n) return head('Radio') + loading();
-  const st = allCards('station');
-  const featured = st.filter((c) => c.station.kind !== 'artist'), artistSt = st.filter((c) => c.station.kind === 'artist');
-  const lead = featured[0];
+  const wait = homeWait('Radio'); if (wait) return wait;
+  const { i, show, start } = liveShow();
+  const hh = (h) => String(h % 24).padStart(2, '0') + ':00';
+  const up = [1, 2, 3].map((k) => { const j = (i + k) % 6; return `<div class="sched-row"><span>${hh(6 + j * 4)}</span><span><b>${esc(SHOWS[j][0])}</b><small>${esc(SHOWS[j][1])} · ${SHOWS[j][2].map((g) => GENRES[g].name).join(', ')}</small></span></div>`; }).join('');
   const recentSt = S.recent.filter((x) => x.t === 'rstation');
+  const artists = uniq([...libArtistIds(), ...feedArtists()]).filter((a) => ARTISTS[a] && !a.startsWith('n_')).slice(0, 12);
   return head('Radio') +
-    (lead ? `<div class="live" style="--a:${hue(lead.title)};--b:${(hue(lead.title) + 40) % 360}"><div class="live-main"><span class="live-badge">LIVE</span><span class="eyebrow" style="color:rgba(255,255,255,.8)">Featured station</span><h2>${esc(lead.title)}</h2><p>Endless songs picked by JioSaavn. ${esc(lead.subtitle || '')}</p><button class="btn" data-act="play-rstation" data-name="${esc(lead.station.name)}" data-lang="${esc(lead.station.language)}" data-kind="${esc(lead.station.kind)}" data-img="${esc(lead.image)}">${ic('play')}Listen Now</button></div>
-      <div class="live-sched"><h4>More stations</h4>${featured.slice(1, 5).map((c) => `<div class="sched-row" data-act="play-rstation" data-name="${esc(c.station.name)}" data-lang="${esc(c.station.language)}" data-kind="${esc(c.station.kind)}" data-img="${esc(c.image)}" style="cursor:pointer"><span>${ic('radio')}</span><span><b>${esc(c.title)}</b><small>${esc(c.station.language ? cap(c.station.language) : 'Station')}</small></span></div>`).join('')}</div></div>` : '') +
+    `<div class="live" style="--a:350;--b:20"><div class="live-main"><span class="live-badge">LIVE</span><span class="eyebrow" style="color:rgba(255,255,255,.8)">AURA One · ${hh(start)}–${hh(start + 4)}</span><h2>${esc(show[0])}</h2><p>${esc(show[1])}. ${show[2].map((g) => GENRES[g].name).join(', ')} all show long.</p><button class="btn" data-act="play-live">${ic('play')}Listen Now</button></div>
+     <div class="live-sched"><h4>Coming up</h4>${up}</div></div>` +
     shelf('Recently Played Stations', recentSt.map(recentTile)) +
-    shelf('Featured Stations', featured.map((c) => stationCard(c))) +
-    shelf('Artist Stations', artistSt.map((c) => stationCard(c))) +
-    shelf('Stations from Your Library', libArtistIds().filter((a) => !a.startsWith('n_')).slice(0, 12).map((a) => `<article class="tile round" data-act="artist-station" data-id="${esc(a)}" tabindex="0">${avatar(a)}<div class="tile-t">${esc(ARTISTS[a].name)}</div><div class="tile-s">Station</div></article>`));
+    shelf('Stations for You', stationTiles()) +
+    `<section><div class="shelf-head"><h2>Stations by Genre</h2></div><div class="cats">${CATS.map(([n, h]) => `<button class="cat" style="--a:${h}" data-act="play-station" data-id="${esc(n)}"><b>${esc(n)}</b><span>${ic('radio')}Station</span></button>`).join('')}</div></section>` +
+    shelf('Stations from Artists', artists.map((a) => `<article class="tile round" data-act="artist-station" data-id="${esc(a)}" tabindex="0">${avatar(a)}<div class="tile-t">${esc(ARTISTS[a].name)}</div><div class="tile-s">Station</div></article>`));
 };
-const CATS = [['Bollywood', 25], ['Romance', 340], ['Party', 300], ['Workout', 8], ['Chill', 165], ['Lo-Fi', 160], ['Punjabi', 40], ['Indie', 96], ['90s', 220], ['Devotional', 50], ['Tamil', 190], ['Telugu', 270], ['English Pop', 330], ['Ghazal', 30], ['Sufi', 140], ['Hip Hop', 46]];
-const browseCats = () => `<div class="shelf-head" style="margin-top:6px"><h2>Browse Categories</h2></div><div class="cats">${CATS.map(([n, h]) => `<button class="cat" style="--a:${h}" data-go="genre" data-id="${esc(n)}"><b>${esc(n)}</b><span>Playlists, songs and albums</span></button>`).join('')}</div>`;
+const CATS = [['Bollywood', 25], ['Romance', 340], ['Party', 300], ['Pop', 330], ['Punjabi', 40], ['Indie', 96], ['Hip Hop', 46], ['90s', 220], ['Devotional', 50], ['Tamil', 190], ['Telugu', 270], ['Ghazal', 30], ['Sufi', 140], ['Rock', 6], ['Lo-Fi', 160], ['Classical', 220]];
+const MOODS_LIVE = [['Chill', 165], ['Focus', 212], ['Workout', 8], ['Late Night', 292], ['Sleep', 236], ['Sunday Morning', 36], ['Road Trip', 20], ['Heartbreak', 330]];
+const browseCats = () => `<div class="shelf-head" style="margin-top:6px"><h2>Browse Categories</h2></div><div class="cats">${CATS.map(([n, h]) => `<button class="cat" style="--a:${h}" data-go="genre" data-id="${esc(n)}"><b>${esc(n)}</b><span>Playlists, songs and albums</span></button>`).join('')}</div>
+  <div class="shelf-head"><h2>Moods &amp; Activities</h2></div><div class="cats">${MOODS_LIVE.map(([n, h]) => `<button class="cat" style="--a:${h}" data-go="genre" data-id="${esc(n)}"><b>${esc(n)}</b><span>Songs for the moment</span></button>`).join('')}</div>`;
 let searchTimer = 0;
 searchResults = function () {
   const q = S.search.trim();
   if (!q) return browseCats();
   const lib = S.scope === 'lib';
-  const seg = `<div class="toolbar"><div class="seg"><button class="${lib ? '' : 'on'}" data-act="scope" data-k="all">JioSaavn</button><button class="${lib ? 'on' : ''}" data-act="scope" data-k="lib">Your Library</button></div></div>`;
+  const seg = `<div class="toolbar"><div class="seg"><button class="${lib ? '' : 'on'}" data-act="scope" data-k="all">AURA</button><button class="${lib ? 'on' : ''}" data-act="scope" data-k="lib">Your Library</button></div></div>`;
   if (lib) return seg + libSearch(q);
   const r = SR[q];
   if (!r) {
@@ -429,7 +492,7 @@ searchResults = function () {
       api('/api/search?q=' + enc(q)).then((res) => { SR[q] = res; }).catch((e) => { SR[q] = { error: e.message }; })
         .finally(() => { if (S.search.trim() === q && cur().name === 'search') updateSearch(S.search); });
     }, 280);
-    return seg + loading('Searching JioSaavn…');
+    return seg + loading('Searching…');
   }
   if (r.error) return seg + `<div class="empty">${ic('info')}<b>Search didn’t work</b><span>${esc(r.error)}</span></div>`;
   const songsIds = r.songs.map(ingSong).filter(Boolean), albums = r.albums.map(ingAlbum).filter(Boolean),
@@ -450,7 +513,7 @@ function libSearch(q) {
   const tr = libSongIds().filter((id) => m(TR[id].title) || m(TR[id].artistsText) || m((AL[TR[id].album] || {}).title));
   const al = libAlbumIds().filter((a) => AL[a] && (m(AL[a].title) || m(ARTISTS[AL[a].artist].name)));
   const pl = libPlaylists().filter((p) => m(p.name));
-  if (!tr.length && !al.length && !pl.length) return `<div class="empty">${ic('search')}<b>Nothing in your library matches “${esc(q)}”</b><span>Switch to JioSaavn to search everything.</span></div>`;
+  if (!tr.length && !al.length && !pl.length) return `<div class="empty">${ic('search')}<b>Nothing in your library matches “${esc(q)}”</b><span>Switch to AURA to search everything.</span></div>`;
   return (tr.length ? `<section><div class="shelf-head" style="margin-top:6px"><h2>Songs</h2></div>${trackList(tr.slice(0, 20), 'Library search', { art: 1 })}</section>` : '') +
     shelf('Albums', al.map((a) => albumTile(a))) + shelf('Playlists', pl.map((p) => plTile(p)));
 }
@@ -545,10 +608,12 @@ openMenu = function (key, pos) {
 const _settingsModal = settingsModal;
 settingsModal = function (tab) {
   _settingsModal(tab);
+  const snd = document.querySelector('#modal-root fieldset[data-tab="sound"]');
+  if (snd && window.AURA_NATIVE) snd.innerHTML = `<p><b>Equalizer</b></p><p class="muted">In the Android app, songs stream directly to the app, so the equalizer can’t change them. It works when you use AURA on your computer with <code>node server.js</code>. Your phone’s own sound settings still apply.</p>`;
   const f = document.querySelector('#modal-root fieldset[data-tab="about"]');
   if (f) f.innerHTML = `<img class="about-logo" src="${LOGO}" alt="AURA logo"><p><b>AURA</b> · <i>Listen to your heart’s desire.</i></p>
-    <p>You’re listening to the live JioSaavn catalogue, streamed through the AURA server on this computer for your personal use.</p>
-    <p class="muted">Your library, playlists, loved songs and settings are saved in this browser. Lyrics come from JioSaavn and aren’t time-synced.</p>
+    <p>${window.AURA_NATIVE ? 'You’re listening to AURA’s live library, streamed straight to this phone.' : 'You’re listening to AURA’s live library, streamed through the AURA server on this computer.'}</p>
+    <p class="muted">Your library, playlists, loved songs and settings are saved in this browser. Lyrics aren’t time-synced.</p>
     <button type="button" class="btn" data-act="reset-live" style="align-self:flex-start">${ic('trash')}Clear Library</button>`;
 };
 const _act2 = act;

@@ -1,0 +1,62 @@
+name: Build Android APK
+
+# Builds AURA for Android on every push to main, on pull requests, or when you press "Run workflow" in the Actions tab.
+# The APK appears under the run's "Artifacts" section as AURA-android.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Capacitor
+        run: npm install --no-audit --no-fund
+
+      - name: Build the app's web files
+        run: npm run build:app
+
+      - name: Create the Android project
+        run: npx cap add android
+
+      - name: Add the AURA icon, splash screen and playback setting
+        run: npm run android:icons
+
+      - name: Copy web files into the Android project
+        run: npx cap sync android
+
+      - name: Build the APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk AURA.apk
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AURA-android
+          path: AURA.apk
+          retention-days: 30

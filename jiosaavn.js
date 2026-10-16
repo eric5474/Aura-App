@@ -9,9 +9,11 @@
  * no downloads.
  */
 
-const BASE = process.env.JIOSAAVN_BASE || 'https://www.jiosaavn.com/api.php';
-const LANGS = process.env.AURA_LANGUAGES || 'hindi,english';
-const BITRATE = String(process.env.AURA_BITRATE || '128');
+// Runs in Node (server.js) and inside the Android app (bundled by scripts/build-app.js).
+const ENV = (typeof process !== 'undefined' && process.env) || (typeof globalThis !== 'undefined' && globalThis.AURA_ENV) || {};
+const BASE = ENV.JIOSAAVN_BASE || 'https://www.jiosaavn.com/api.php';
+const LANGS = ENV.AURA_LANGUAGES || 'hindi,english';
+const BITRATE = String(ENV.AURA_BITRATE || '128');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 /* ---------------- tiny TTL cache ---------------- */
@@ -47,7 +49,7 @@ async function call(fn, params = {}, opt = {}) {
       Accept: 'application/json, text/plain, */*',
       Cookie: `L=${encodeURIComponent(LANGS)}; DL=english; gdpr_acceptance=true`,
     },
-    signal: AbortSignal.timeout(15000),
+    signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined,
   };
   let url = `${BASE}?${key}`;
   if (opt.post) {
@@ -327,14 +329,21 @@ async function streamUrl(id) {
   if (!mediaRef.has(id)) await songs([id]);
   const ref = mediaRef.get(id);
   if (!ref) throw new Error('This song isn’t available to stream');
-  let tok = await call('song.generateAuthToken', { url: ref, bitrate: BITRATE }, { post: true, v4: false, fresh: true, allowError: true });
-  if (!tok || !tok.auth_url) {
-    tok = await call('song.generateAuthToken', { url: ref, bitrate: BITRATE }, { v4: false, fresh: true, allowError: true });
+  // Ask for a stream link the way the web player does, with a few fallbacks.
+  const tries = [{ post: true, v4: false }, { v4: false }, { v4: true }, { v4: false, ctx: 'android' }];
+  let tok = null, lastErr = null;
+  for (const t of tries) {
+    try {
+      tok = await call('song.generateAuthToken', { url: ref, bitrate: BITRATE }, { ...t, fresh: true, allowError: true });
+      if (tok && tok.auth_url) break;
+    } catch (e) { lastErr = e; }
   }
-  if (!tok || !tok.auth_url) throw new Error('JioSaavn didn’t return a stream for this song');
+  if (!tok || !tok.auth_url) throw lastErr || new Error('This song isn’t available to stream right now');
   streamLinks.set(id, { url: tok.auth_url, exp: Date.now() + 4 * 60 * 1000 });
   return tok.auth_url;
 }
 const forgetStream = (id) => streamLinks.delete(id);
 
-module.exports = { home, search, songs, album, playlist, artist, lyrics, songRadio, featuredRadio, streamUrl, forgetStream, UA, BASE };
+const api = { home, search, songs, album, playlist, artist, lyrics, songRadio, featuredRadio, streamUrl, forgetStream, UA, BASE };
+if (typeof module !== 'undefined' && module.exports) module.exports = api;
+else globalThis.JioSaavn = api;
