@@ -32,6 +32,42 @@ function allowed(req) {
   const a = crypto.createHash('sha256').update(given).digest(), b = crypto.createHash('sha256').update(PASSWORD).digest();
   return crypto.timingSafeEqual(a, b);
 }
+// A JioSaavn sign-in is kept by the browser as a sealed token (only this server can open it),
+// so nothing about the account is stored on the server and it survives restarts.
+const SEAL_KEY = crypto.createHash('sha256').update('aura-account:' + (PASSWORD || crypto.randomBytes(32).toString('hex'))).digest();
+function seal(obj) {
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', SEAL_KEY, iv);
+  const body = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), body]).toString('base64url');
+}
+function unseal(tok) {
+  try {
+    const b = Buffer.from(String(tok || ''), 'base64url');
+    const d = crypto.createDecipheriv('aes-256-gcm', SEAL_KEY, b.subarray(0, 12));
+    d.setAuthTag(b.subarray(12, 28));
+    const o = JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8'));
+    if (o.until && o.until < Date.now()) o.pro = false; // Pro ran out
+    return o;
+  } catch (_) { return null; }
+}
+const acctOf = (req, q) => unseal(q.get('acct') || req.headers['x-aura-account']);
+function readJSON(req) {
+  return new Promise((resolve) => {
+    let n = 0; const parts = [];
+    req.on('data', (c) => { n += c.length; if (n < 20000) parts.push(c); });
+    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(parts).toString('utf8') || '{}')); } catch (_) { resolve({}); } });
+  });
+}
+async function accountLogin(req, res) {
+  const b = await readJSON(req);
+  try {
+    const a = await js.login(b.username, b.password);
+    const until = a.until || 0;
+    return sendJSON(res, 200, { ok: true, name: a.name, email: a.email, pro: a.pro, until, fields: a.pro ? undefined : a.fields,
+      token: seal({ session: a.session, pro: a.pro, until, name: a.name, at: Date.now() }) });
+  } catch (e) { return sendJSON(res, 400, { error: e.message }); }
+}
+
 const PUBLIC = path.join(__dirname, 'public');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -98,9 +134,9 @@ const routes = [
   [/^\/api\/radio\/featured$/, (m, q) => js.featuredRadio(q.get('name'), q.get('lang') || '', q.get('kind') || 'featured', Math.min(50, Number(q.get('n')) || 20))],
 ];
 
-async function stream(req, res, id, retried = false) {
+async function stream(req, res, id, retried = false, acct = null) {
   let url;
-  try { url = await js.streamUrl(id); } catch (e) { return sendJSON(res, 502, { error: e.message }); }
+  try { url = await js.streamUrl(id, acct); } catch (e) { return sendJSON(res, 502, { error: e.message }); }
   const headers = { 'User-Agent': js.UA, ...SITE_HEADERS };
   if (req.headers.range) headers.Range = req.headers.range;
   const ac = new AbortController();
@@ -110,7 +146,7 @@ async function stream(req, res, id, retried = false) {
   catch (e) { if (!res.headersSent && !ac.signal.aborted) sendJSON(res, 502, { error: 'Stream unavailable' }); return; }
   if ((up.status === 403 || up.status === 410) && !retried) { // signed link expired
     js.forgetStream(id);
-    return stream(req, res, id, true);
+    return stream(req, res, id, true, acct);
   }
   if (up.status >= 400) return sendJSON(res, 502, { error: `Stream unavailable (HTTP ${up.status})` });
   const out = { 'Content-Type': up.headers.get('content-type') || 'audio/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' };
@@ -157,9 +193,11 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="AURA", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('AURA is private. Enter your AURA password (any username).');
   }
+  if (req.method === 'POST' && u.pathname === '/api/account/login') return accountLogin(req, res);
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
+  if (u.pathname === '/api/account/status') { const a = acctOf(req, u.searchParams); return sendJSON(res, 200, a ? { signedIn: true, name: a.name, pro: !!a.pro, until: a.until || 0 } : { signedIn: false }); }
   const sm = u.pathname.match(/^\/api\/stream\/([^/]+)$/);
-  if (sm) return stream(req, res, decodeURIComponent(sm[1]));
+  if (sm) return stream(req, res, decodeURIComponent(sm[1]), false, acctOf(req, u.searchParams));
   if (u.pathname.startsWith('/api/')) {
     for (const [re, fn] of routes) {
       const m = u.pathname.match(re);

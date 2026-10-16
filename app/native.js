@@ -32,7 +32,8 @@
 
   // Audio links: the app is served over https, so ask for JioSaavn's CDN over https too.
   window.AURA_STREAM_URL = async function (id) {
-    const url = await js.streamUrl(id);
+    const acct = window.AURA_JS_ACCOUNT ? window.AURA_JS_ACCOUNT() : null; // a JioSaavn Pro sign-in, if any
+    const url = await js.streamUrl(id, acct);
     return url.replace(/^http:\/\/([a-z0-9.-]*saavncdn\.com)/i, 'https://$1');
   };
 

@@ -79,6 +79,14 @@ npm run android:icons      # first time only
 npm run android:apk        # APK at android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## Accounts
+
+**AURA account.** The first time AURA opens, it asks you to create an account (name, email, password). It's kept on that device only: the password is stored as a salted PBKDF2 hash, never in plain text. Forgot it? "Reset AURA on this device" removes the account but keeps your library and playlists. Each device (browser, phone app) has its own account.
+
+**JioSaavn account (Profile → JioSaavn account → Sign In).** Sign in with your JioSaavn email and password. If JioSaavn reports the account as Pro, songs stream at 320 kbps; otherwise they stay at 128 kbps. JioSaavn has no lossless audio; 320 kbps is its highest quality. Your password goes only to JioSaavn and isn't saved. On the Render site, the sign-in is kept in your browser as a sealed token only your server can read. Phone-number (OTP) sign-in isn't supported.
+
+If you have Pro but AURA shows 128 kbps, open "Show what JioSaavn returned" on the Profile screen and share that list of field names (it contains no values).
+
 ## What's connected
 
 | AURA screen | JioSaavn data |
@@ -96,6 +104,11 @@ npm run android:apk        # APK at android/app/build/outputs/apk/debug/app-debu
 Your library, playlists, loved songs, recently played items and settings are saved in your browser. The equalizer, Sound Check, sleep timer, queue, shuffle and repeat all work on the live streams.
 
 ## Backend API
+
+- `POST /api/account/login` `{username,password}`: JioSaavn sign-in, returns a sealed account token
+- `GET /api/account/status?acct=TOKEN`
+- `GET /api/diagnose`: checks each playback step
+
 
 All routes return JSON. The front end uses them, and you can call them directly.
 
