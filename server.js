@@ -45,12 +45,15 @@ function sendJSON(res, code, body) {
   res.end(data);
 }
 
+// what the JioSaavn web player sends along with audio requests
+const SITE_HEADERS = { Referer: 'https://www.jiosaavn.com/', Origin: 'https://www.jiosaavn.com' };
+
 const routes = [
   [/^\/api\/health$/, async () => ({ ok: true, version: 1 })],
   [/^\/api\/streamcheck\/([^/]+)$/, async (m) => {
     try {
       const url = await js.streamUrl(decodeURIComponent(m[1]));
-      const r = await fetch(url, { headers: { Range: 'bytes=0-1', 'User-Agent': js.UA } });
+      const r = await fetch(url, { headers: { Range: 'bytes=0-1', 'User-Agent': js.UA, ...SITE_HEADERS } });
       return r.ok ? { ok: true } : { ok: false, error: `the song’s audio server refused it (HTTP ${r.status}); it may not be licensed where this server runs` };
     } catch (e) { return { ok: false, error: e.message }; }
   }],
@@ -67,6 +70,8 @@ const routes = [
       const u = new URL(url);
       report.audio_host = u.host;
       report.link_is_signed = /[?&](Expires|Signature|token|hdnea|hdntl)/i.test(u.search);
+      const tryWith = async (extra) => (await fetch(url, { headers: { Range: 'bytes=0-1', 'User-Agent': js.UA, ...extra } })).status;
+      report.with_site_headers_status = await tryWith(SITE_HEADERS);
       const r = await fetch(url, { headers: { Range: 'bytes=0-1', 'User-Agent': js.UA } });
       report.audio_status = r.status;
       const h = {};
@@ -96,7 +101,7 @@ const routes = [
 async function stream(req, res, id, retried = false) {
   let url;
   try { url = await js.streamUrl(id); } catch (e) { return sendJSON(res, 502, { error: e.message }); }
-  const headers = { 'User-Agent': js.UA };
+  const headers = { 'User-Agent': js.UA, ...SITE_HEADERS };
   if (req.headers.range) headers.Range = req.headers.range;
   const ac = new AbortController();
   res.on('close', () => ac.abort());
