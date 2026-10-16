@@ -1,0 +1,17 @@
+{
+  "name": "aura-music",
+  "version": "1.0.0",
+  "description": "AURA: Listen to your heart's desire. A personal music player on top of the JioSaavn catalogue.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "mock": "node test/mock-jiosaavn.js",
+    "start:mock": "JIOSAAVN_BASE=http://127.0.0.1:4555/api.php node server.js",
+    "test": "node test/browser-test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}
