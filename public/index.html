@@ -1,68 +1,383 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AURA - Desktop Player</title>
+    <title>AURA Music - Web Player</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = { 
-            darkMode: 'class', 
-            theme: { 
-                extend: { 
-                    colors: { 
-                        primary: '#FA243C', /* Apple Music Red/Pink Accent */
-                        darkBg: '#3E2412', /* Matching the rich brown background from the image */
-                        cardBg: '#18181b' 
-                    } 
-                } 
-            } 
-        }
-    </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
-            background-color: var(--theme-bg, #3E2412); 
-            color: #f4f4f5; 
-            margin: 0; 
-            overflow: hidden; 
-            transition: background-color 0.5s ease;
-        }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
         
-        .floating-player {
-            background: rgba(40, 40, 40, 0.85);
-            backdrop-filter: blur(25px);
-            -webkit-backdrop-filter: blur(25px);
-            border: 1px solid rgba(255,255,255,0.08);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #000000;
+            color: #ffffff;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
         }
-        
-        .sidebar-item:hover, .sidebar-item.active {
-            background: rgba(255,255,255,0.08);
-            border-radius: 6px;
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
         }
-        .sidebar-item.active { color: white; font-weight: 500; }
-        .sidebar-item.active svg { color: var(--theme-primary, #FA243C); }
-        
-        .track-row:hover { background: rgba(255,255,255,0.08); }
-        input[type="range"] { accent-color: #FA243C; }
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .aura-accent { color: #fa233b; }
+        .aura-bg-accent { background-color: #fa233b; }
+
+        .lcd-screen {
+            background-color: #1a1a1c;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);
+        }
+
+        .glass-panel {
+            background: rgba(28, 28, 30, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .marquee-container {
+            overflow: hidden;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .marquee-content {
+            display: inline-block;
+            animation: marquee 15s linear infinite;
+        }
+
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 10px;
+            width: 10px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -3px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
     </style>
 </head>
-<body x-data="auraApp()">
+<body>
+    <div id="root"></div>
 
-    <!-- HTML5 AUDIO ENGINE -->
-    <audio x-ref="audioEl" 
-           @timeupdate="currentTime = $refs.audioEl.currentTime; duration =$refs.audioEl.duration || 100" 
-           @ended="nextTrack()">
-    </audio>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- MAIN DESKTOP LAYOUT -->
-    <div class="flex h-screen w-full relative">
-        
-        <!-- LEFT SIDEBAR -->
-        <aside class="w-64 h
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- Extracted Data from Reference HTML ---
+        const topPicks = [
+            { id: 1, title: "BAD BXTCH! - EP", subtitle: "ONIMXRU, HXSTXGE", eyebrow: "New Release", img: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/19/ac/9b/19ac9b63-8be4-7a0e-360c-192dccd5f0df/cover.jpg/450x600SHT.AMTPPS01.webp", type: "portrait", bg: "#191919" },
+            { id: 2, title: "Guru Randhawa & Similar Artists", subtitle: "Apple Music", eyebrow: "Featuring Guru Randhawa", img: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&w=450&q=80", type: "portrait", bg: "#44556c" },
+            { id: 3, title: "New Music", subtitle: "Karan Aujla, 1nonly, Arjan Dhillon...", eyebrow: "Made for You", img: "https://images.unsplash.com/photo-1493225457124-a1a2a5956093?auto=format&fit=crop&w=450&q=80", type: "portrait", bg: "#ee989d" },
+            { id: 4, title: "Diljit Dosanjh & Similar Artists", subtitle: "Apple Music", eyebrow: "Featuring Diljit Dosanjh", img: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=450&q=80", type: "portrait", bg: "#e6e6e6" },
+            { id: 5, title: "Recall - EP", subtitle: "Narvent", eyebrow: "New Release", img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=450&q=80", type: "portrait", bg: "#040401" }
+        ];
+
+        const recentlyPlayed = [
+            { id: 1, title: "Gaming Phonk", subtitle: "Magic Records", img: "https://is1-ssl.mzstatic.com/image/thumb/b-E4gO3wpTR8A3tvZr12eg/316x316cc.webp" },
+            { id: 2, title: "Gaming Soundtracks", subtitle: "Apple Music Gaming", img: "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=316&q=80" },
+            { id: 3, title: "New Music", subtitle: "Apple Music for Rahul", img: "https://images.unsplash.com/photo-1614613535808-3196b28bfcac?auto=format&fit=crop&w=316&q=80" },
+            { id: 4, title: "Punjabi Hits", subtitle: "Apple Music Punjabi", img: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=316&q=80" },
+            { id: 5, title: "Favourite Songs", subtitle: "Apple Music", img: "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=316&q=80" },
+            { id: 6, title: "La La La - Single", subtitle: "Neha Kakkar & Arjun Kanungo", img: "https://images.unsplash.com/photo-1493225457124-a1a2a5956093?auto=format&fit=crop&w=316&q=80" },
+            { id: 7, title: "MAA CHOD DUNGA (EXTENDED)", subtitle: "Gauntlet.", img: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=316&q=80", explicit: true }
+        ];
+
+        const punjabiMusic = [
+            { id: 1, title: "dnd - EP", subtitle: "Garry Sandhu, Josh Sidhu", img: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=316&q=80" },
+            { id: 2, title: "Bangers - EP", subtitle: "The Landers, Davi Singh", img: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=316&q=80" },
+            { id: 3, title: "Sidhu Moose Wala Essentials", subtitle: "Apple Music Punjabi", img: "https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=316&q=80" },
+            { id: 4, title: "YEAH PROOF: The Producers", subtitle: "Apple Music Punjabi", img: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=316&q=80" },
+            { id: 5, title: "Rass: The Producers", subtitle: "Apple Music Punjabi", img: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=316&q=80" }
+        ];
+
+        const phonkMusic = [
+            { id: 1, title: "ESCAPE THE GRIP - EP", subtitle: "Eyez Hate U", img: "https://images.unsplash.com/photo-1621360841013-c76831f1c42c?auto=format&fit=crop&w=316&q=80", explicit: true },
+            { id: 2, title: "PHONK MODE", subtitle: "rxmistake666", img: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=316&q=80" },
+            { id: 3, title: "Liberty - Single", subtitle: "1rrelatiøn", img: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=316&q=80" },
+            { id: 4, title: "Crystalwaves - Single", subtitle: "luc wall", img: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=316&q=80" },
+            { id: 5, title: "Sped Up, Vol. 1", subtitle: "KUTE", img: "https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=316&q=80", explicit: true }
+        ];
+
+        const playlistsData = [
+            { icon: 'list-music', label: 'All Playlists' },
+            { icon: 'music', label: 'Favourite Songs' },
+            { icon: 'list-video', label: 'Bollywood Hits' },
+            { icon: 'gamepad-2', label: 'Gaming Phonk' },
+            { icon: 'disc-3', label: 'Punjabi Hits' },
+            { icon: 'sparkles', label: 'Punjabi Hits: Best of 2025' },
+            { icon: 'activity', label: 'Punjabi Workout' }
+        ];
+
+        // --- UI COMPONENTS --- //
+        const Icon = ({ name, className = "w-5 h-5" }) => {
+            useEffect(() => { lucide.createIcons(); }, [name]);
+            return <i data-lucide={name} className={className}></i>;
+        };
+
+        const SidebarItem = ({ icon, label, active, hasArrow }) => (
+            <button className={`w-full flex items-center justify-between px-4 py-1.5 mb-[2px] rounded-md text-[13px] font-medium transition-all ${
+                active ? 'bg-zinc-800/80 text-white aura-accent' : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-white'
+            }`}>
+                <div className="flex items-center gap-3">
+                    <span className={active ? 'aura-accent' : 'text-zinc-400'}><Icon name={icon} className="w-4 h-4" /></span>
+                    <span className="truncate">{label}</span>
+                </div>
+                {hasArrow && <Icon name="chevron-right" className="w-3 h-3 text-zinc-500" />}
+            </button>
+        );
+
+        const Sidebar = () => (
+            <aside className="hidden md:flex flex-col w-[260px] h-full bg-[#1c1c1e] border-r border-white/10 flex-shrink-0 select-none z-10 relative">
+                {/* Search Bar Area */}
+                <div className="pt-6 px-4 pb-2">
+                    <div className="flex items-center gap-2 mb-6 text-white cursor-pointer px-2">
+                        <div className="w-6 h-6 bg-gradient-to-br from-red-500 to-rose-600 rounded-md flex items-center justify-center shadow-lg">
+                            <Icon name="music" className="w-3 h-3 text-white" />
+                        </div>
+                        <span className="text-[17px] font-semibold tracking-tight">AURA</span>
+                    </div>
+                </div>
+
+                {/* Navigation Scroll Area */}
+                <div className="flex-1 overflow-y-auto px-2 pb-24 scrollbar-hide">
+                    <div className="space-y-0">
+                        <SidebarItem icon="search" label="Search" />
+                        <SidebarItem icon="home" label="Home" active={true} />
+                        <SidebarItem icon="layout-grid" label="New" />
+                        <SidebarItem icon="radio" label="Radio" />
+                    </div>
+
+                    <div className="mt-8">
+                        <div className="flex items-center justify-between px-4 mb-2">
+                            <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Library</h3>
+                            <button className="text-[11px] text-zinc-400 hover:text-white font-medium">Edit</button>
+                        </div>
+                        <SidebarItem icon="pin" label="Pins" hasArrow={true} />
+                        <SidebarItem icon="clock" label="Recently Added" />
+                        <SidebarItem icon="mic-2" label="Artists" />
+                        <SidebarItem icon="disc-3" label="Albums" />
+                        <SidebarItem icon="music-2" label="Songs" />
+                        <SidebarItem icon="monitor-play" label="Music Videos" />
+                        <SidebarItem icon="user-check" label="Made for You" />
+                    </div>
+
+                    <div className="mt-8">
+                        <h3 className="px-4 text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Playlists</h3>
+                        {playlistsData.map((item, idx) => <SidebarItem key={idx} {...item} />)}
+                    </div>
+                </div>
+            </aside>
+        );
+
+        const TopPlayerBar = () => (
+            <div className="h-[60px] w-full bg-[#1c1c1e] border-b border-white/10 flex items-center justify-between px-4 sm:px-6 flex-shrink-0 z-20">
+                {/* Left: Playback Controls */}
+                <div className="flex items-center gap-4 lg:gap-6 w-1/4 min-w-[140px]">
+                    <button className="text-zinc-400 hover:text-white hidden sm:block transition-colors"><Icon name="shuffle" className="w-4 h-4" /></button>
+                    <button className="text-zinc-300 hover:text-white transition-colors"><Icon name="skip-back" className="w-5 h-5 fill-current" /></button>
+                    <button className="text-zinc-300 hover:text-white transition-colors hover:scale-105 transform"><Icon name="play" className="w-8 h-8 fill-current" /></button>
+                    <button className="text-zinc-300 hover:text-white transition-colors"><Icon name="skip-forward" className="w-5 h-5 fill-current" /></button>
+                    <button className="text-zinc-400 hover:text-white hidden sm:block transition-colors"><Icon name="repeat" className="w-4 h-4" /></button>
+                </div>
+
+                {/* Center: LCD Screen */}
+                <div className="flex-1 max-w-[540px] hidden md:flex justify-center">
+                    <div className="lcd-screen w-full h-[42px] rounded-md flex items-center px-3 cursor-pointer group">
+                        <img src="https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/f0/19/d6/f019d61e-6bd3-d936-1214-22b732083ef0/20UM1IM14285.rgb.jpg/80x80bb-60.jpg" 
+                             className="w-[30px] h-[30px] rounded-[3px] mr-3 object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="Album Art" />
+                        <div className="flex-1 flex flex-col justify-center overflow-hidden h-full py-1">
+                            <div className="text-[11px] font-medium text-white flex items-center gap-2 relative h-4 overflow-hidden">
+                                <div className="marquee-container w-full absolute">
+                                    <div className="marquee-content">
+                                        Olivia Rodrigo — drivers license - Single &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Olivia Rodrigo — drivers license - Single
+                                    </div>
+                                </div>
+                                <span className="absolute right-0 bg-white/20 text-[8px] px-1 rounded-[2px] text-white font-bold backdrop-blur-sm z-10">E</span>
+                            </div>
+                            <div className="flex items-center w-full gap-2 mt-1">
+                                <span className="text-[9px] text-zinc-400 tabular-nums">0:43</span>
+                                <input type="range" defaultValue="43" min="0" max="100" className="flex-1 h-1" />
+                                <span className="text-[9px] text-zinc-400 tabular-nums">-0:47</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right: Tools & Profile */}
+                <div className="flex items-center justify-end gap-3 lg:gap-5 w-1/4 min-w-[140px]">
+                    <button className="text-zinc-400 hover:text-white hidden lg:block"><Icon name="mic-2" className="w-4 h-4" /></button>
+                    <button className="text-zinc-400 hover:text-white hidden lg:block"><Icon name="list-video" className="w-4 h-4" /></button>
+                    <div className="hidden lg:flex items-center gap-2 w-[100px] group">
+                        <Icon name="volume-2" className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
+                        <input type="range" defaultValue="80" className="w-full" />
+                    </div>
+                    <div className="flex items-center gap-2 ml-2 pl-4 border-l border-white/10 cursor-pointer">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-[10px] font-bold text-white shadow-md border border-white/10">
+                            RS
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const ShelfCard = ({ item }) => {
+            const isPortrait = item.type === "portrait";
+            return (
+                <div className={`flex flex-col group cursor-pointer ${isPortrait ? 'w-[200px] sm:w-[240px]' : 'w-[140px] sm:w-[160px] md:w-[180px]'}`}>
+                    {/* Eyebrow for Portrait cards */}
+                    {isPortrait && item.eyebrow && (
+                        <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">{item.eyebrow}</div>
+                    )}
+                    
+                    {/* Artwork Container */}
+                    <div className={`relative ${isPortrait ? 'aspect-[3/4]' : 'aspect-square'} rounded-lg overflow-hidden mb-2.5 shadow-lg bg-zinc-800`}>
+                        <img src={item.img} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]" />
+                        
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-start p-3">
+                            <button className={`rounded-full flex items-center justify-center text-white backdrop-blur-md shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 ${isPortrait ? 'w-10 h-10 bg-black/50 hover:bg-black/70' : 'w-8 h-8 bg-black/50 hover:bg-black/70'}`}>
+                                <Icon name="play" className="w-4 h-4 ml-0.5 fill-current" />
+                            </button>
+                        </div>
+                        
+                        {/* Permanent Gradient for text legibility on Portrait */}
+                        {isPortrait && (
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none"></div>
+                        )}
+
+                        {/* Floating Text for Portrait */}
+                        {isPortrait && (
+                            <div className="absolute bottom-0 left-0 p-4 w-full text-left pointer-events-none">
+                                <h3 className="text-[17px] font-bold text-white leading-tight mb-0.5 line-clamp-2">{item.title}</h3>
+                                <p className="text-[13px] text-zinc-300 font-medium line-clamp-1">{item.subtitle}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Below-artwork Text for Square cards */}
+                    {!isPortrait && (
+                        <div className="px-0.5">
+                            <h3 className="text-[13px] font-medium text-white line-clamp-1 group-hover:underline flex items-center">
+                                {item.title}
+                                {item.explicit && <span className="ml-1.5 px-[3px] py-[1px] bg-zinc-700 text-[8px] font-bold rounded-sm text-zinc-300 leading-none">E</span>}
+                            </h3>
+                            <p className="text-[12px] text-zinc-400 line-clamp-1 mt-0.5">{item.subtitle}</p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const Shelf = ({ title, items, hasArrow = true }) => (
+            <div className="mb-10 sm:mb-14">
+                <div className="flex items-center justify-between mb-4 px-5 md:px-8">
+                    <h2 className="text-[19px] sm:text-[22px] font-bold text-white flex items-center gap-1 hover:text-red-500 cursor-pointer transition-colors group">
+                        {title}
+                        {hasArrow && <Icon name="chevron-right" className="w-5 h-5 text-zinc-500 group-hover:text-red-500 transition-colors" />}
+                    </h2>
+                </div>
+                {/* Horizontal Scroll Area */}
+                <div className="flex gap-4 sm:gap-5 overflow-x-auto pb-6 px-5 md:px-8 scrollbar-hide snap-x relative">
+                    {items.map((item, idx) => (
+                        <div key={idx} className="snap-start flex-shrink-0">
+                            <ShelfCard item={item} />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        const MobileBottomBar = () => (
+            <div className="md:hidden glass-panel border-t border-white/5 flex items-center justify-around pb-safe pt-2 px-2 absolute bottom-0 w-full z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+                <button className="flex flex-col items-center gap-1 p-2 text-[#fa233b]">
+                    <Icon name="play-circle" className="w-6 h-6 fill-current" />
+                    <span className="text-[10px] font-medium">Listen Now</span>
+                </button>
+                <button className="flex flex-col items-center gap-1 p-2 text-zinc-500 hover:text-zinc-300">
+                    <Icon name="layout-grid" className="w-6 h-6" />
+                    <span className="text-[10px] font-medium">Browse</span>
+                </button>
+                <button className="flex flex-col items-center gap-1 p-2 text-zinc-500 hover:text-zinc-300">
+                    <Icon name="radio" className="w-6 h-6" />
+                    <span className="text-[10px] font-medium">Radio</span>
+                </button>
+                <button className="flex flex-col items-center gap-1 p-2 text-zinc-500 hover:text-zinc-300">
+                    <Icon name="music-2" className="w-6 h-6" />
+                    <span className="text-[10px] font-medium">Library</span>
+                </button>
+                <button className="flex flex-col items-center gap-1 p-2 text-zinc-500 hover:text-zinc-300">
+                    <Icon name="search" className="w-6 h-6" />
+                    <span className="text-[10px] font-medium">Search</span>
+                </button>
+            </div>
+        );
+
+        const App = () => {
+            return (
+                <div className="flex h-screen w-full bg-[#121212] overflow-hidden">
+                    {/* Left Panel - Explicitly rendered and hidden only on mobile */}
+                    <Sidebar />
+                    
+                    {/* Main Content Area */}
+                    <div className="flex flex-col flex-1 min-w-0 h-full relative bg-[#121212]">
+                        <TopPlayerBar />
+                        
+                        {/* Scrollable Page Content */}
+                        <main className="flex-1 overflow-y-auto pb-24 md:pb-8 scrollbar-hide relative z-10" id="scrollable-page">
+                            <div className="max-w-[1920px] mx-auto">
+                                {/* Page Header */}
+                                <div className="pt-8 sm:pt-12 pb-2 px-5 md:px-8 mb-6 border-b border-white/10 mx-5 md:mx-8">
+                                    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white pb-4">Home</h1>
+                                </div>
+                                
+                                {/* Shelves mapped directly from Reference Data */}
+                                <Shelf title="Top Picks for You" items={topPicks} />
+                                <Shelf title="Recently Played" items={recentlyPlayed} />
+                                <Shelf title="Punjabi Music" items={punjabiMusic} />
+                                <Shelf title="Phonk" items={phonkMusic} />
+                                <Shelf title="Stations for You" items={recentlyPlayed.slice(0, 4).reverse()} />
+                            </div>
+                        </main>
+                    </div>
+
+                    {/* Mobile Tab Bar */}
+                    <MobileBottomBar />
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
