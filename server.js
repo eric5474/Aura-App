@@ -54,6 +54,34 @@ const routes = [
       return r.ok ? { ok: true } : { ok: false, error: `the song’s audio server refused it (HTTP ${r.status}); it may not be licensed where this server runs` };
     } catch (e) { return { ok: false, error: e.message }; }
   }],
+  [/^\/api\/diagnose$/, async (m, q) => {
+    // Plain report of each playback step, to see exactly where a song gets refused.
+    const report = { server_region: process.env.RENDER_REGION || process.env.AURA_REGION || 'unknown' };
+    try {
+      const out = await js.search(q.get('q') || 'Kesariya', 'songs');
+      const s = out.songs[0];
+      if (!s) return { ...report, step: 'search', ok: false, detail: 'search returned no songs' };
+      report.song = `${s.title} (${s.id})`;
+      let url;
+      try { url = await js.streamUrl(s.id); } catch (e) { return { ...report, step: 'stream link', ok: false, detail: e.message }; }
+      const u = new URL(url);
+      report.audio_host = u.host;
+      report.link_is_signed = /[?&](Expires|Signature|token|hdnea|hdntl)/i.test(u.search);
+      const r = await fetch(url, { headers: { Range: 'bytes=0-1', 'User-Agent': js.UA } });
+      report.audio_status = r.status;
+      const h = {};
+      for (const k of ['server', 'x-cache', 'x-amz-cf-pop', 'x-akamai-reference', 'via', 'content-type']) { const v = r.headers.get(k); if (v) h[k] = v; }
+      report.audio_headers = h;
+      if (!r.ok) {
+        const text = (await r.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+        report.audio_body = text;
+        report.likely = /country|region|geo|location/i.test(text) ? 'blocked in this country/region'
+          : /expired|signature|token/i.test(text) ? 'stream link rejected (signature/expiry)'
+          : 'refused by the audio server; see audio_body';
+      }
+      return { ...report, step: 'audio', ok: r.ok };
+    } catch (e) { return { ...report, ok: false, detail: e.message }; }
+  }],
   [/^\/api\/home$/, () => js.home()],
   [/^\/api\/search$/, (m, q) => js.search(q.get('q'), q.get('type') || 'all', Number(q.get('page')) || 1)],
   [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],

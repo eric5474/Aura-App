@@ -16,5 +16,7 @@ services:
         value: "20"
       - key: AURA_LANGUAGES
         value: hindi,english
+      - key: AURA_REGION
+        value: singapore
       - key: AURA_PASSWORD
         sync: false            # Render asks you to type it in; it's never stored in GitHub
