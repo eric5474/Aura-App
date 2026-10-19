@@ -79,6 +79,9 @@ npm run android:icons      # first time only
 npm run android:apk        # APK at android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## Colour themes
+AURA opens in an orange-to-black gradient. In **Settings → Appearance** you can pick one of 16 colour themes (or Classic, the original teal look that follows your system's light/dark setting), or make your own: any gradient start colour, end colour and accent colour, the gradient angle, swap, random and reset. Text colour adjusts to stay readable. The choice is saved on the device.
+
 ## Accounts
 
 **AURA account.** The first time AURA opens, it asks you to create an account (name, email, password). It's kept on that device only: the password is stored as a salted PBKDF2 hash, never in plain text. Forgot it? "Reset AURA on this device" removes the account but keeps your library and playlists. Each device (browser, phone app) has its own account.
