@@ -134,6 +134,7 @@ const routes = [
   [/^\/api\/charts\/([a-z]+)\/([a-z0-9_]+)$/, (m) => charts.chart(m[1], m[2])],
   [/^\/api\/home$/, () => js.home()],
   [/^\/api\/search$/, (m, q) => sources.search(q.get('q'), q.get('type') || 'all', Number(q.get('page')) || 1)],
+  [/^\/api\/youtube\/resolve$/, async (m, q) => ({ video: await sources.youtubeResolve(String(q.get('q') || '').slice(0, 200)) })],
   [/^\/api\/sources$/, async () => ({ sources: sources.list() })],
   [/^\/api\/sources\/check$/, (m, q) => sources.check(q.get('q') || 'love')],
   [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],

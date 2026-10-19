@@ -14,11 +14,15 @@ const JAMENDO = (SENV.JAMENDO_BASE || 'https://api.jamendo.com/v3.0').replace(/\
 const JAMENDO_ID = SENV.AURA_JAMENDO_CLIENT_ID || '';
 const APP_NAME = 'AURA';
 const SUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
-const ENABLED = String(SENV.AURA_SOURCES || 'jiosaavn,audius,jamendo').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+const YT_KEY = SENV.AURA_YOUTUBE_API_KEY || '';
+const YOUTUBE = (SENV.YOUTUBE_BASE || 'https://www.googleapis.com/youtube/v3').replace(/\/$/, '');
+// With a YouTube key, songs play through YouTube and JioSaavn is only the catalogue; AURA_SOURCES can add 'jiosaavn' back as a streaming source.
+const ENABLED = String(SENV.AURA_SOURCES || (YT_KEY ? 'youtube,audius,jamendo' : 'jiosaavn,audius,jamendo')).split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
 const js = (typeof require === 'function' && typeof module !== 'undefined') ? require('./jiosaavn') : globalThis.JioSaavn;
 
-const on = (id) => ENABLED.includes(id) && (id !== 'jamendo' || !!JAMENDO_ID);
-const sourceOf = (id) => (/^au_/.test(id) ? 'audius' : /^jm_/.test(id) ? 'jamendo' : 'jiosaavn');
+const on = (id) => ENABLED.includes(id) && (id !== 'jamendo' || !!JAMENDO_ID) && (id !== 'youtube' || !!YT_KEY);
+const sourceOf = (id) => (/^au_/.test(id) ? 'audius' : /^jm_/.test(id) ? 'jamendo' : /^yt_/.test(id) ? 'youtube' : 'jiosaavn');
+const charts = () => (typeof require === 'function' && typeof module !== 'undefined') ? require('./charts') : globalThis.AuraCharts;
 
 async function getJSON(url, ms = 6000) {
   let res;
@@ -87,28 +91,64 @@ async function jamendoStreamUrl(id) {
   return t.audio;
 }
 
+/* ---------------- YouTube (official Data API for search; YouTube's own embedded player plays it) ---------------- */
+const ytCache = new Map();
+const isoSec = (d) => { const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(d || ''); return m ? (Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0)) : 0; };
+async function youtubeSearch(q, n = 8) {
+  const key = (q + '|' + n).toLowerCase();
+  const hit = ytCache.get(key);
+  if (hit && hit.exp > Date.now()) return hit.v; // searches cost quota, so remember them for a while
+  const j = await getJSON(`${YOUTUBE}/search?part=snippet&type=video&videoCategoryId=10&videoEmbeddable=true&videoSyndicated=true&maxResults=${n}&q=${encodeURIComponent(q)}&key=${encodeURIComponent(YT_KEY)}`);
+  const items = (j.items || []).filter((x) => x.id && x.id.videoId);
+  const dur = {};
+  if (items.length) {
+    try { const d = await getJSON(`${YOUTUBE}/videos?part=contentDetails&id=${items.map((x) => x.id.videoId).join(',')}&key=${encodeURIComponent(YT_KEY)}`); for (const v of d.items || []) dur[v.id] = isoSec(v.contentDetails && v.contentDetails.duration); } catch (_) { /* durations are a nicety */ }
+  }
+  const C = charts();
+  const out = items.map((x) => {
+    const sn = x.snippet || {};
+    const c = C.cleanVideoTitle(sn.title || '');
+    const chan = String(sn.channelTitle || '').replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').trim();
+    const th = sn.thumbnails || {};
+    return {
+      id: 'yt_' + x.id.videoId, title: c.title || String(sn.title || ''),
+      artists: [{ id: '', name: c.artist || chan || 'Unknown Artist', image: '' }],
+      album: '', albumId: '', image: (th.high || th.medium || th.default || {}).url || '',
+      duration: dur[x.id.videoId] || 0, year: String(sn.publishedAt || '').slice(0, 4), releaseDate: String(sn.publishedAt || '').slice(0, 10),
+      language: '', explicit: false, hasLyrics: false, label: 'YouTube', copyright: '', playCount: 0,
+      url: 'https://www.youtube.com/watch?v=' + x.id.videoId, source: 'youtube',
+    };
+  }).filter((x) => x.title);
+  ytCache.set(key, { v: out, exp: Date.now() + 6 * 3600 * 1000 });
+  return out;
+}
+
 /* ---------------- all sources together ---------------- */
-const NAMES = { jiosaavn: 'AURA library', audius: 'Audius', jamendo: 'Jamendo' }; // the main library is shown under AURA's own name
+const NAMES = { jiosaavn: 'AURA library', youtube: 'YouTube', audius: 'Audius', jamendo: 'Jamendo' }; // the main library is shown under AURA's own name
 function list() {
-  return ['jiosaavn', 'audius', 'jamendo'].map((id) => ({
-    id, name: NAMES[id], enabled: on(id),
-    note: id === 'jamendo' && !JAMENDO_ID && ENABLED.includes('jamendo') ? 'needs a free client id (AURA_JAMENDO_CLIENT_ID)' : '',
+  return ['jiosaavn', 'youtube', 'audius', 'jamendo'].map((id) => ({
+    id, name: NAMES[id], enabled: id === 'jiosaavn' ? true : on(id),
+    note: id === 'jiosaavn' ? (on('jiosaavn') ? '' : 'songs and albums only; plays through YouTube') : id === 'youtube' && !YT_KEY && ENABLED.includes('youtube') ? 'needs a YouTube Data API key (AURA_YOUTUBE_API_KEY)' : id === 'jamendo' && !JAMENDO_ID && ENABLED.includes('jamendo') ? 'needs a free client id (AURA_JAMENDO_CLIENT_ID)' : '',
   }));
 }
 
 // Search the main library plus the other sources. A source that fails never breaks the others.
 async function search(q, type = 'all', page = 1) {
-  const main = on('jiosaavn') ? js.search(q, type, page) : Promise.resolve({ query: q, songs: [], albums: [], artists: [], playlists: [] });
+  const main = js.search(q, type, page); // the library is always the catalogue; where songs play from is decided separately
   const extra = [];
   if ((type === 'all' || type === 'songs') && page === 1 && String(q || '').trim()) {
     const n = type === 'songs' ? 10 : 6;
+    if (on('youtube')) extra.push(youtubeSearch(q, n).then((r) => ({ yt: r })).catch(() => []));
     if (on('audius')) extra.push(audiusSearch(q, n).catch(() => []));
     if (on('jamendo')) extra.push(jamendoSearch(q, n).catch(() => []));
   }
   const [m, ...more] = await Promise.allSettled([main, ...extra]);
-  const extras = more.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
-  if (m.status === 'rejected' && !extras.length) throw m.reason;
+  const settled = more.map((r) => (r.status === 'fulfilled' ? r.value : []));
+  const ytRes = (settled.find((v) => v && v.yt) || {}).yt || [];
+  const extras = settled.flatMap((v) => (Array.isArray(v) ? v : []));
+  if (m.status === 'rejected' && !extras.length && !ytRes.length) throw m.reason;
   const out = m.status === 'fulfilled' ? m.value : { query: q, songs: [], albums: [], artists: [], playlists: [] };
+  if (ytRes.length && (out.songs || []).length < 5) extras.unshift(...ytRes.slice(0, 5)); // YouTube fills gaps; known songs already play through it
   if (extras.length) out.songs = [...(out.songs || []), ...extras];
   return out;
 }
@@ -117,6 +157,8 @@ async function streamUrl(id, acct) {
   const s = sourceOf(String(id));
   if (s === 'audius') return audiusStreamUrl(id);
   if (s === 'jamendo') return jamendoStreamUrl(String(id));
+  if (s === 'youtube') throw new Error('This song plays in the YouTube player');
+  if (!on('jiosaavn')) throw new Error('Songs play through YouTube');
   return js.streamUrl(id, acct);
 }
 
@@ -136,11 +178,25 @@ async function alternate(q, excludeId, acct) {
   return null;
 }
 
+// The YouTube video that best matches "title artist" (or null). Played by YouTube's own embedded player.
+async function youtubeResolve(q) {
+  if (!on('youtube')) return null;
+  const want = words(q);
+  if (!want.length) return null;
+  let best = null, bestScore = 0;
+  for (const s of await youtubeSearch(q, 6)) {
+    const have = new Set(words(s.title + ' ' + s.artists[0].name));
+    const score = want.filter((w) => have.has(w)).length / want.length;
+    if (score > bestScore) { best = s; bestScore = score; }
+  }
+  return best && bestScore >= 0.5 ? { id: best.id.replace(/^yt_/, ''), title: best.title, duration: best.duration } : null;
+}
+
 // A plain report of whether each source can find and stream a song from where this runs.
 async function check(q = 'love') {
   const out = {};
   const probe = async (id, fn) => {
-    if (!on(id)) { out[id] = { enabled: false, note: list().find((x) => x.id === id).note || 'switched off' }; return; }
+    if (id !== 'jiosaavn' && !on(id)) { out[id] = { enabled: false, note: list().find((x) => x.id === id).note || 'switched off' }; return; }
     try { out[id] = { enabled: true, ...(await fn()) }; } catch (e) { out[id] = { enabled: true, ok: false, detail: e.message }; }
   };
   const audioTest = async (url) => {
@@ -148,13 +204,14 @@ async function check(q = 'love') {
     return { audio_status: r.status, audio_type: r.headers.get('content-type') || '' };
   };
   await Promise.all([
+    probe('youtube', async () => { const r = await youtubeSearch(q, 3); return r[0] ? { ok: true, song: r[0].title, note: 'plays in YouTube’s embedded player' } : { ok: false, detail: 'search found no songs' }; }),
     probe('audius', async () => { const r = await audiusSearch(q, 3); if (!r[0]) return { ok: false, detail: 'search found no songs' }; const a = await audioTest(await streamUrl(r[0].id)); return { ok: a.audio_status < 400, song: r[0].title, ...a }; }),
     probe('jamendo', async () => { const r = await jamendoSearch(q, 3); if (!r[0]) return { ok: false, detail: 'search found no songs' }; const a = await audioTest(await streamUrl(r[0].id)); return { ok: a.audio_status < 400, song: r[0].title, ...a }; }),
-    probe('jiosaavn', async () => { const r = await js.search(q, 'songs'); if (!r.songs[0]) return { ok: false, detail: 'search found no songs' }; const u = await js.streamUrl(r.songs[0].id); const a = await audioTest(u); return { ok: a.audio_status < 400, song: r.songs[0].title, note: 'checked without the JioSaavn site headers', ...a }; }),
+    probe('jiosaavn', async () => { if (!on('jiosaavn')) return { ok: true, note: 'catalogue only; songs play through YouTube' }; const r = await js.search(q, 'songs'); if (!r.songs[0]) return { ok: false, detail: 'search found no songs' }; const u = await js.streamUrl(r.songs[0].id); const a = await audioTest(u); return { ok: a.audio_status < 400, song: r.songs[0].title, note: 'checked without the JioSaavn site headers', ...a }; }),
   ]);
   return out;
 }
 
-const sources = { list, search, streamUrl, alternate, sourceOf, check, audiusSearch, jamendoSearch, audiusSong, jamendoSong, enabled: on };
+const sources = { list, search, streamUrl, alternate, youtubeResolve, youtubeSearch, sourceOf, check, audiusSearch, jamendoSearch, audiusSong, jamendoSong, enabled: on };
 if (typeof module !== 'undefined' && module.exports) module.exports = sources;
 else globalThis.AuraSources = sources;
