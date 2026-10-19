@@ -516,7 +516,111 @@ kbd{font-family:var(--font-m);font-size:11.5px;background:var(--hover);border:1p
 .js-steps a{color:var(--accent);font-weight:600}
 .field textarea{box-sizing:border-box;font:12px/1.4 'JetBrains Mono',monospace;resize:vertical}
 .js-fields{font:12px/1.5 'JetBrains Mono',monospace;color:var(--muted);word-break:break-word;margin:8px 0 0}
+.pal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.pal-sw{border:2px solid transparent;border-radius:14px;padding:3px;background:none;cursor:pointer;color:var(--fg);font:inherit;font-size:11px;text-align:center}
+.pal-sw i{display:block;height:44px;border-radius:11px;border:1px solid var(--line);margin-bottom:4px;position:relative}
+.pal-sw i::after{content:"";position:absolute;right:6px;bottom:6px;width:12px;height:12px;border-radius:50%;background:var(--dot);box-shadow:0 0 0 2px rgba(255,255,255,.75)}
+.pal-sw[aria-pressed="true"]{border-color:var(--accent)}
+.pal-custom{gap:10px}
+.pal-custom label{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.field.pal-custom input[type=color]{width:56px!important;flex:none;height:34px;border:1px solid var(--line);border-radius:8px;background:none;padding:2px;cursor:pointer}
+.field.pal-custom input[type=range]{flex:1;max-width:190px;width:auto!important}
+@media (max-width:480px){.pal-grid{grid-template-columns:repeat(3,1fr)}}
 </style>
+<script>
+/* Colour themes: a two-colour gradient + an accent. Default "Ember" is orange to black. "Classic" is the original teal look
+   (and follows the system light/dark setting). Runs before the page paints so there is no flash. */
+(function(){
+  var KEY='aura-palette-v1';
+  var PRESETS=[
+    {id:'ember',name:'Ember',c1:'#d9480f',c2:'#0b0b0b',accent:'#ff8a1f',angle:160},
+    {id:'sunset',name:'Sunset',c1:'#f12711',c2:'#1a0a2e',accent:'#f5af19',angle:160},
+    {id:'lava',name:'Lava',c1:'#ff3d00',c2:'#2b0000',accent:'#ffb300',angle:170},
+    {id:'crimson',name:'Crimson',c1:'#c31432',c2:'#0a0a0a',accent:'#ff4d6d',angle:160},
+    {id:'rose',name:'Rose',c1:'#e0457b',c2:'#2a0a1a',accent:'#ff9ec4',angle:150},
+    {id:'gold',name:'Gold',c1:'#b9770e',c2:'#1c1400',accent:'#ffd86b',angle:160},
+    {id:'forest',name:'Forest',c1:'#11998e',c2:'#04140f',accent:'#38ef7d',angle:160},
+    {id:'mint',name:'Mint',c1:'#2bbf6a',c2:'#07201a',accent:'#38f9d7',angle:150},
+    {id:'ocean',name:'Ocean',c1:'#0575e6',c2:'#00111f',accent:'#00d4ff',angle:160},
+    {id:'midnight',name:'Midnight',c1:'#1e3a8a',c2:'#020617',accent:'#60a5fa',angle:170},
+    {id:'grape',name:'Grape',c1:'#8e2de2',c2:'#12002b',accent:'#d9a5ff',angle:160},
+    {id:'slate',name:'Slate',c1:'#4b5563',c2:'#0b0f14',accent:'#94a3b8',angle:160},
+    {id:'mono',name:'Mono',c1:'#2b2b2b',c2:'#000000',accent:'#ffffff',angle:160},
+    {id:'candy',name:'Candy',c1:'#ff758c',c2:'#ffb88c',accent:'#7f1d4a',angle:135},
+    {id:'aurora',name:'Aurora',c1:'#00c9ff',c2:'#92fe9d',accent:'#0b1020',angle:135},
+    {id:'paper',name:'Paper',c1:'#fdfbfb',c2:'#dfe4ea',accent:'#e8590c',angle:160}
+  ];
+  var VARS=['--bg','--side','--surface','--raise','--fg','--muted','--line','--hover','--active','--zebra','--accent','--accent-fg','--glass','--lcd','--menu','--shadow','--c1','--c2','--angle'];
+  var hex=function(v){return /^#[0-9a-f]{6}$/i.test(v||'')};
+  var rgb=function(h){return [1,3,5].map(function(i){return parseInt(h.slice(i,i+2),16)})};
+  var toHex=function(c){return '#'+c.map(function(v){return Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')}).join('')};
+  var mix=function(a,b,t){return a.map(function(v,i){return v+(b[i]-v)*t})};
+  var lin=function(v){v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};
+  var lum=function(c){return .2126*lin(c[0])+.7152*lin(c[1])+.0722*lin(c[2])};
+  var ratio=function(a,b){var x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
+  var rgba=function(c,a){return 'rgba('+c.map(Math.round).join(',')+','+a+')'};
+  var cur=null; // null = Classic
+
+  function load(){
+    try{var raw=localStorage.getItem(KEY);
+      if(raw==='classic') return null;
+      var j=JSON.parse(raw||'null');
+      if(j&&hex(j.c1)&&hex(j.c2)&&hex(j.accent)) return {c1:j.c1,c2:j.c2,accent:j.accent,angle:Math.min(360,Math.max(0,Number(j.angle)||0))};
+    }catch(e){}
+    return {c1:PRESETS[0].c1,c2:PRESETS[0].c2,accent:PRESETS[0].accent,angle:PRESETS[0].angle};
+  }
+  function save(){try{localStorage.setItem(KEY,cur?JSON.stringify(cur):'classic')}catch(e){}}
+
+  function apply(t){
+    var r=document.documentElement, st=document.getElementById('palette-css');
+    if(!t){
+      VARS.forEach(function(v){r.style.removeProperty(v)});
+      if(st) st.textContent='';
+      r.removeAttribute('data-palette');
+      return;
+    }
+    var a=rgb(t.c1), b=rgb(t.c2), mean=mix(a,b,.5), light=lum(mean)>.42;
+    var W=[255,255,255], K=[0,0,0], acc=rgb(t.accent);
+    var surface=light?mix(mean,W,.82):mix(mix(b,K,.1),mix(a,W,.1),.12);
+    var v={
+      '--c1':t.c1,'--c2':t.c2,'--angle':t.angle+'deg',
+      '--bg':toHex(light?mix(mean,W,.9):mix(b,K,.25)),
+      '--side':light?'rgba(255,255,255,.5)':'rgba(0,0,0,.4)',
+      '--surface':toHex(surface),
+      '--raise':toHex(light?W:mix(surface,W,.1)),
+      '--fg':light?'#16181d':'#fff4ec',
+      '--muted':light?'rgba(22,24,29,.64)':'rgba(255,240,230,.66)',
+      '--line':light?'rgba(0,0,0,.13)':'rgba(255,255,255,.13)',
+      '--hover':light?'rgba(0,0,0,.06)':'rgba(255,255,255,.08)',
+      '--active':rgba(acc,light?.2:.24),
+      '--zebra':light?'rgba(0,0,0,.03)':'rgba(255,255,255,.035)',
+      '--accent':t.accent,
+      '--accent-fg':ratio(acc,[17,17,17])>=ratio(acc,W)?'#111111':'#ffffff',
+      '--glass':light?'rgba(255,255,255,.68)':'rgba(0,0,0,.5)',
+      '--lcd':light?'rgba(255,255,255,.55)':'rgba(0,0,0,.34)',
+      '--menu':rgba(light?mix(mean,W,.9):mix(b,K,.1),.97),
+      '--shadow':'0 14px 44px rgba(0,0,0,'+(light?.22:.55)+')'
+    };
+    for(var k in v) r.style.setProperty(k,v[k]);
+    r.style.setProperty('color-scheme',light?'light':'dark');
+    r.setAttribute('data-palette',light?'light':'dark');
+    if(!st){st=document.createElement('style');st.id='palette-css';document.head.appendChild(st)}
+    st.textContent='html[data-palette] body{background:linear-gradient(var(--angle),var(--c1),var(--c2)) fixed}'+
+      'html[data-palette] .sidebar,html[data-palette] .panel{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}';
+    var m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute('content',t.c1);
+  }
+
+  cur=load(); apply(cur);
+  window.AuraPalette={
+    PRESETS:PRESETS, ratio:ratio, rgb:rgb,
+    get:function(){return cur?{c1:cur.c1,c2:cur.c2,accent:cur.accent,angle:cur.angle}:null},
+    set:function(p){var base=cur||PRESETS[0];cur={c1:base.c1,c2:base.c2,accent:base.accent,angle:base.angle};for(var k in p) cur[k]=p[k];apply(cur);save();return this.get()},
+    classic:function(){cur=null;apply(null);save()},
+    reset:function(){var d=PRESETS[0];cur={c1:d.c1,c2:d.c2,accent:d.accent,angle:d.angle};apply(cur);save()},
+    apply:apply
+  };
+})();
+</script>
 
 <div class="app" id="app">
   <aside class="sidebar" id="sidebar" aria-label="Navigation"></aside>
@@ -1223,9 +1327,42 @@ function settingsModal(tab='playback'){const s=S.settings,g=s.eqCustom||EQ[s.eq]
    <div class="eqs">${['Bass','Mid','Treble'].map((l,i)=>`<label>${l}<input type="range" class="rng eqr" min="-12" max="12" step="1" value="${g[i]}" style="--p:${(g[i]+12)/24*100}%" aria-label="${l}"><output>${g[i]>0?'+':''}${g[i]} dB</output></label>`).join('')}</div>
    <small class="muted">Changes apply immediately while music plays.</small>`)}
   ${fs('lyrics',`<div class="field"><span>Lyrics text size</span><div class="seg" style="align-self:flex-start">${[['s','Small'],['m','Medium'],['l','Large']].map(([k,l])=>`<button type="button" class="${s.lyric===k?'on':''}" data-act="lyric-size" data-k="${k}">${l}</button>`).join('')}</div></div><small class="muted">Tap any lyric line to jump to that part of the song.</small>`)}
-  ${fs('look',`<div class="field"><span>Theme</span><div class="seg" style="align-self:flex-start">${['system','light','dark'].map(t=>`<button type="button" class="${S.theme===t?'on':''}" data-act="theme" data-k="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div></div>`)}
+  ${fs('look',`${palUI()}<div class="field"><span>Light / dark (Classic look only)</span><div class="seg" style="align-self:flex-start">${['system','light','dark'].map(t=>`<button type="button" class="${S.theme===t?'on':''}" data-act="theme" data-k="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div></div>`)}
   ${fs('about',`<img class="about-logo" src="${LOGO}" alt="AURA logo"><p><b>AURA</b> · <i>Listen to your heart’s desire.</i></p><p>AURA is a music app prototype. Every artist, album and song here is fictional. Each song is generated live in your browser by a small synthesizer from its own seed, so it sounds the same every time you play it.</p><p class="muted">Your library, playlists, loved songs and settings are saved in this browser only.</p><button type="button" class="btn" data-act="reset" style="align-self:flex-start">${ic('trash')}Reset to Sample Library</button>`)}
   </div><div class="modal-foot"><button class="btn primary" data-act="close-modal">Done</button></div>`)}
+
+/* Colour theme picker (Settings → Appearance). The colour engine itself is the first script in this file. */
+function palUI(){
+  const P=window.AuraPalette,t=P.get(),same=(a,b)=>t&&a.c1.toLowerCase()===t.c1.toLowerCase()&&a.c2.toLowerCase()===t.c2.toLowerCase()&&a.accent.toLowerCase()===t.accent.toLowerCase()&&Number(a.angle)===Number(t.angle);
+  const sw=(p)=>`<button type="button" class="pal-sw" data-act="pal-pick" data-id="${p.id}" aria-pressed="${same(p,t)}" title="${p.name}"><i style="background:linear-gradient(${p.angle}deg,${p.c1},${p.c2});--dot:${p.accent}"></i><span>${p.name}</span></button>`;
+  const v=t||P.PRESETS[0];
+  return `<div class="field"><span>Colour theme</span>
+   <div class="pal-grid">${P.PRESETS.map(sw).join('')}
+    <button type="button" class="pal-sw" data-act="pal-classic" aria-pressed="${!t}" title="Classic"><i style="background:linear-gradient(160deg,#f8faf9,#3ac9be 55%,#111514);--dot:#0a807a"></i><span>Classic</span></button></div></div>
+   <div class="field pal-custom"><span>Make your own</span>
+    <label>Gradient start <input type="color" class="pal-in" data-k="c1" value="${v.c1}" aria-label="Gradient start colour"></label>
+    <label>Gradient end <input type="color" class="pal-in" data-k="c2" value="${v.c2}" aria-label="Gradient end colour"></label>
+    <label>Accent <input type="color" class="pal-in" data-k="accent" value="${v.accent}" aria-label="Accent colour"></label>
+    <label>Angle <input type="range" class="rng pal-in" data-k="angle" min="0" max="360" step="5" value="${v.angle}" style="--p:${v.angle/360*100}%" aria-label="Gradient angle"><output>${v.angle}°</output></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-act="pal-swap">⇄ Swap colours</button><button type="button" class="btn" data-act="pal-random">🎲 Surprise me</button><button type="button" class="btn" data-act="pal-reset">Reset to orange &amp; black</button></div>
+    <small class="muted">Text switches between light and dark automatically so it stays readable with any colours. Your choice is saved on this device.</small></div>`;
+}
+function palRefresh(){const m=document.querySelector('fieldset[data-tab="look"]');if(!m) return;const h=m.querySelector('.pal-grid');if(!h) return;
+  const keep=document.activeElement&&document.activeElement.classList&&document.activeElement.classList.contains('pal-in')?document.activeElement.dataset.k:null;
+  const t=window.AuraPalette.get(),same=(p)=>t&&p.c1.toLowerCase()===t.c1.toLowerCase()&&p.c2.toLowerCase()===t.c2.toLowerCase()&&p.accent.toLowerCase()===t.accent.toLowerCase()&&Number(p.angle)===Number(t.angle);
+  h.querySelectorAll('.pal-sw').forEach(b=>{const p=window.AuraPalette.PRESETS.find(x=>x.id===b.dataset.id);b.setAttribute('aria-pressed',String(p?same(p):(b.dataset.act==='pal-classic'&&!t)))});
+  if(t) m.querySelectorAll('.pal-in').forEach(i=>{if(i.dataset.k!==keep) i.value=t[i.dataset.k];if(i.dataset.k==='angle'){i.style.setProperty('--p',t.angle/360*100+'%');i.nextElementSibling.textContent=t.angle+'°'}})}
+function palAct(a,el){const P=window.AuraPalette;
+  if(a==='pal-pick'){const p=P.PRESETS.find(x=>x.id===el.dataset.id);P.set({c1:p.c1,c2:p.c2,accent:p.accent,angle:p.angle})}
+  else if(a==='pal-classic') P.classic();
+  else if(a==='pal-reset') P.reset();
+  else if(a==='pal-swap'){const t=P.get()||P.PRESETS[0];P.set({c1:t.c2,c2:t.c1})}
+  else if(a==='pal-random'){const h=Math.floor(Math.random()*360),h2=(h+40+Math.floor(Math.random()*200))%360;
+    const hsl=(hh,s,l)=>{const q=s*Math.min(l,1-l),f=n=>{const k=(n+hh/30)%12,c=l-q*Math.max(-1,Math.min(k-3,9-k,1));return Math.round(255*c).toString(16).padStart(2,'0')};return '#'+f(0)+f(8)+f(4)};
+    P.set({c1:hsl(h,.75,.42+Math.random()*.15),c2:hsl(h2,.7,.05+Math.random()*.12),accent:hsl((h+20)%360,.95,.62),angle:[135,150,160,180,200][Math.floor(Math.random()*5)]})}
+  palRefresh()}
+document.addEventListener('input',e=>{const t=e.target;if(!t.classList||!t.classList.contains('pal-in')) return;
+  window.AuraPalette.set({[t.dataset.k]:t.dataset.k==='angle'?Number(t.value):t.value});palRefresh()});
 
 /* =========================================================
    Events
@@ -1262,6 +1399,7 @@ function act(n,el,e){const id=el.dataset.id,sh=!!el.dataset.shuffle;
   case 'edit-profile':profileModal();break;
   case 'aura-signout':signOut();break;
   case 'stab':$$('#modal-root fieldset').forEach(f=>f.hidden=f.dataset.tab!==el.dataset.k);$$('#modal-root [data-act="stab"]').forEach(b=>b.classList.toggle('on',b===el));break;
+  case 'pal-pick':case 'pal-classic':case 'pal-reset':case 'pal-swap':case 'pal-random':palAct(n,el);break;
   case 'theme':S.theme=el.dataset.k;applyTheme();persist();$$('[data-act="theme"]').forEach(b=>b.classList.toggle('on',b===el));break;
   case 'lyric-size':S.settings.lyric=el.dataset.k;applyTheme();persist();$$('[data-act="lyric-size"]').forEach(b=>b.classList.toggle('on',b===el));break;
   case 'sleep':{const m=+el.dataset.m;S.sleep=m?{until:Date.now()+m*60000}:null;toast(m?`Playback will stop in ${m} minutes`:'Sleep timer off');settingsModal('playback');break}
