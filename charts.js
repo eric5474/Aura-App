@@ -150,7 +150,6 @@ async function chart(source, id) {
     // official YouTube chart first (needs the API key, costs 1 quota unit); kworb's trending page is the fallback
     try { if (ytHooks) tracks = await ytHooks.official(id); } catch (_) { tracks = null; }
     if (!tracks || !tracks.length) tracks = parseYouTube(await getText(id === 'world' ? `${KWORB}/youtube/trending.html` : `${KWORB}/youtube/trending/${id}.html`));
-    if (ytHooks) tracks = tracks.map((t) => ({ ...t, song: ytHooks.song(t.id, t.title, t.artist, t.image) })); // plays straight from its video id: no search
   }
   if (!tracks.length) throw new Error('This chart is empty right now. Try again later');
   const v = { source, id, title: meta.name, desc: meta.desc, kind: meta.kind || 'songs', sourceName: src.name, tracks: tracks.map((t, i) => ({ rank: i + 1, ...t })) };
@@ -158,7 +157,7 @@ async function chart(source, id) {
   return v;
 }
 
-let ytHooks = null; // set by the server: { official(cc), song(id,title,artist,image) }
+let ytHooks = null; // set by the server: { official(cc) }
 const setYouTube = (h) => { ytHooks = h; };
 const charts = { setYouTube, catalogue, chart, parseSpotify, parseApple, parseYouTube, cleanVideoTitle };
 if (typeof module !== 'undefined' && module.exports) module.exports = charts;

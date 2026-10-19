@@ -103,7 +103,7 @@ AURA finds and streams songs from every source that's switched on, in this order
 `AURA_SOURCES` (default `jiosaavn,audius,jamendo`) turns sources on or off. Search results list the main library first, then the others; each song streams from its own source. Check what works from where AURA runs: open `/api/sources/check` (the Profile screen also lists the sources). The big-label chart hits mostly live in the main library; Audius and Jamendo carry independent and Creative Commons music.
 
 If a song won't play from one source (or the stream is refused), AURA looks the same song up in the other sources and plays that copy. 
-**Playing through YouTube.** Set `AURA_YOUTUBE_API_KEY` (a free YouTube Data API v3 key from console.cloud.google.com; for the Android app also add it as a GitHub secret of the same name) and every song plays in YouTube's own embedded player: AURA looks the song up with the official search API (embeddable music videos only) and shows the small player while it plays. JioSaavn then only supplies the catalogue (Home, albums, artists, lyrics, search); its audio is no longer streamed (add `jiosaavn` to `AURA_SOURCES` to bring it back). Notes: the free quota allows about 100 YouTube searches a day (AURA remembers results for 6 hours); there is no equalizer or background play for YouTube songs; AURA does not extract or download YouTube's audio.
+**Audio only.** Every song plays as plain audio through AURA's own player: there is no embedded video player anywhere. Chart songs are matched to the AURA library, Audius or Jamendo by title and artist; a song none of them has can't be played.
 
 `/api/health` shows the running build and how many charts each service has, so you can tell whether a deploy is current.
 
@@ -194,5 +194,5 @@ JIOSAAVN_BASE=http://127.0.0.1:4555/api.php node server.js &
 npx playwright install chromium && node test/browser-test.js   # needs: npm i playwright
 ```
 
-### YouTube chart and quota
-With `AURA_YOUTUBE_API_KEY` set, YouTube charts use YouTube's own "most popular music" chart (1 quota unit per load, cached 3 hours) and their songs play straight from the video id, so playing a chart costs no searches. Without a key (or if that call fails) the chart falls back to kworb's trending page. Searching for a song that isn't in a chart still costs 100 units per search on the free 10,000-unit daily quota; results are cached for 6 hours.
+### YouTube chart list
+With `AURA_YOUTUBE_API_KEY` set, the YouTube chart list uses YouTube's own most-popular music chart (1 quota unit, cached 3 hours); otherwise it uses kworb's trending page. Only the list is used: nothing plays from YouTube.
