@@ -17,6 +17,9 @@ python app.py               # open http://127.0.0.1:5000
 
 Get the Spotify values (free) at developer.spotify.com/dashboard: create an app, copy Client ID and Client Secret into `SPOTIPY_CLIENT_ID` and `SPOTIPY_CLIENT_SECRET`.
 
+## Themes
+The player opens in an orange-to-black gradient. The **🎨 Theme** button opens a panel with 16 presets (Ember, Sunset, Lava, Crimson, Rose, Gold, Forest, Mint, Ocean, Midnight, Grape, Slate, Mono, Candy, Aurora, Paper) and a "Make your own" section: pick any gradient start colour, end colour and accent colour, set the angle, swap the two colours, try a random one, or reset to orange and black. Text turns dark on light gradients and white on dark ones, so it stays readable with any combination. The choice is remembered in the browser (`localStorage`). Code: `static/theme.js` (colours and storage), `static/theme-ui.js` (the panel).
+
 ## How the sync works
 - Tracks come from the "Top 50 Global" playlist (title, artist, ISRC).
 - **Heads-up:** Spotify stopped letting new apps read its own editorial playlists, so that call may answer 404/403. When it does, `sync.py` takes the same chart's track ids from kworb.net and asks Spotify for each track's ISRC, so you still get the full list.
@@ -38,4 +41,5 @@ Table `charts`: `rank, source, isrc, title, artist, youtube_video_id, last_updat
 python -m unittest discover -s tests     # sync + API, with fake Spotify and YouTube Music
 CHARTS_DB=/tmp/t.db python app.py &      # then, with a few rows in that db:
 node tests/frontend_test.js              # the page in a browser with a fake YouTube player
+node tests/theme_test.js                 # the theme picker
 ```

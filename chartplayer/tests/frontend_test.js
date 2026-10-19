@@ -49,6 +49,7 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:5000/';
   await ev(() => window.__err()); await pg.waitForFunction(() => window.__yt.loads.length === 5);
   ok((await ev(() => window.__yt.loads[4])) === 'vid5', 'a video that can’t play is skipped');
   ok(await ev(() => document.querySelector('.track:nth-child(4) .tag').textContent === 'can’t play'), 'and marked');
+  await pg.waitForTimeout(100);                                  // let the fake player finish starting
   await ev(() => window.__end()); await pg.waitForTimeout(400);
   ok((await ev(() => window.__yt.loads.length)) === 5 && (await ev(() => document.getElementById('toggle').textContent)) === '▶', 'after the last song it stops');
   ok(await ev(() => { const r = document.getElementById('yt-card').getBoundingClientRect(); return r.width >= 160 && r.height >= 160 && r.bottom <= innerHeight; }), 'the YouTube player stays visible');
