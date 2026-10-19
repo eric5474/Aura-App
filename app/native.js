@@ -7,6 +7,7 @@
   const js = window.JioSaavn;
   const ch = window.AuraCharts;
   const src = window.AuraSources;
+  if (ch.setYouTube) ch.setYouTube({ official: (cc) => src.youtubeChart(cc), song: (id, t, a, img) => src.ytSong(id, t, a, img) });
   window.AURA_NATIVE = true;
 
   const num = (v, d) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
@@ -16,6 +17,7 @@
     [/^\/api\/charts\/([a-z]+)\/([a-z0-9_]+)$/, (m) => ch.chart(m[1], m[2])],
     [/^\/api\/home$/, () => js.home()],
     [/^\/api\/search$/, (m, q) => src.search(q.get('q'), q.get('type') || 'all', num(q.get('page'), 1))],
+    [/^\/api\/youtube\/resolve$/, async (m, q) => ({ video: await src.youtubeResolve(String(q.get('q') || '').slice(0, 200)) })],
     [/^\/api\/sources$/, async () => ({ sources: src.list() })],
     [/^\/api\/sources\/check$/, (m, q) => src.check(q.get('q') || 'love')],
     [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],

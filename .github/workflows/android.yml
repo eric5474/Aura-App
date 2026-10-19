@@ -37,6 +37,7 @@ jobs:
         run: npm run build:app
         env:
           AURA_JAMENDO_CLIENT_ID: ${{ secrets.AURA_JAMENDO_CLIENT_ID }}   # optional: turns on Jamendo songs in the app
+          AURA_YOUTUBE_API_KEY: ${{ secrets.AURA_YOUTUBE_API_KEY }}       # optional: songs play through YouTube
 
       - name: Create the Android project
         run: npx cap add android

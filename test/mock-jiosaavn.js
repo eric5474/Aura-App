@@ -152,6 +152,16 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ feed: { title: 'Top Songs', country: 'us', results: chartSongs.map((t, i) => ({ id: String(100 + i), name: t.title, artistName: t.artist, artworkUrl100: `${ORIGIN}/img/ap${i}/100x100bb.jpg`, kind: 'songs' })) } }));
   }
+  // YouTube Data API stand-in: search echoes the query back as an "Official Video" title; key must be 'ytkey'
+  if (u.pathname === '/youtube/v3/search' || u.pathname === '/youtube/v3/videos') {
+    if (u.searchParams.get('key') !== 'ytkey') { res.writeHead(403, { 'Content-Type': 'application/json' }); return res.end('{"error":"bad key"}'); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    if (u.pathname.endsWith('/videos') && u.searchParams.get('chart') === 'mostPopular') return res.end(JSON.stringify({ items: [1, 2, 3].map((n) => ({ id: 'pop' + n + 'xxxxxxx', snippet: { title: 'Artist ' + n + ' - Hit ' + n + ' (Official Video)', channelTitle: 'Artist ' + n + 'VEVO', thumbnails: { medium: { url: 'https://i.ytimg.com/vi/pop' + n + '/mq.jpg' } } }, contentDetails: { duration: 'PT3M10S' } })) }));
+    if (u.pathname.endsWith('/videos')) return res.end(JSON.stringify({ items: u.searchParams.get('id').split(',').map((id) => ({ id, contentDetails: { duration: 'PT3M21S' } })) }));
+    if (u.searchParams.get('videoEmbeddable') !== 'true') return res.end(JSON.stringify({ items: [] })); // only embeddable videos may be offered
+    const q = u.searchParams.get('q') || '';
+    return res.end(JSON.stringify({ items: [{ id: { videoId: 'YT_' + Buffer.from(q).toString('hex').slice(-8) }, snippet: { title: q + ' (Official Video)', channelTitle: 'Some Artist - Topic', publishedAt: '2023-01-01T00:00:00Z', thumbnails: { high: { url: image('yt') } } } }] }));
+  }
   // Audius and Jamendo stand-ins (response shapes as those APIs publish them)
   if (u.pathname === '/audius/v1/tracks/search') {
     const q = u.searchParams.get('query') || '';

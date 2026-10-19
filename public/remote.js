@@ -291,6 +291,78 @@ function failed(t, why) {
   if (failCount >= 3) { S.playing = false; E.playing = false; updateAll(); return; }
   if (S.playing) setTimeout(next, 1500);
 }
+
+/* ---------------- YouTube: songs play in YouTube's own embedded player ---------------- */
+let YTM = false;                  // true when the server has a YouTube key: songs play through YouTube
+let ytp = null, ytLoading = null, ytVid = '', ytWanted = '';
+const ytMap = {};                 // track id -> YouTube video id ('' = none found)
+const isYtId = (id) => /^yt_/.test(String(id));
+api('/api/sources').then((r) => { YTM = !!(r.sources || []).find((x) => x.id === 'youtube' && x.enabled); }).catch(() => {});
+function ytBox() {
+  let b = document.getElementById('yt-box');
+  if (!b) {
+    b = document.createElement('div'); b.id = 'yt-box'; b.hidden = true;
+    b.innerHTML = '<div id="yt-host"></div>';
+    document.body.appendChild(b);
+  }
+  return b;
+}
+function ytLoad() {
+  if (ytLoading) return ytLoading;
+  ytLoading = new Promise((resolve, reject) => {
+    ytBox();
+    const make = () => { try { ytp = new window.YT.Player('yt-host', { width: '200', height: '200', playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, origin: location.origin }, events: { onReady: () => resolve(ytp), onStateChange: ytState, onError: ytError } }); } catch (e) { reject(e); } };
+    if (window.YT && window.YT.Player) return make();
+    window.onYouTubeIframeAPIReady = make;
+    const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; sc.onerror = () => reject(new Error('couldn’t load the YouTube player'));
+    document.head.appendChild(sc);
+    setTimeout(() => reject(new Error('the YouTube player didn’t start')), 15000);
+  });
+  ytLoading.catch(() => { ytLoading = null; });
+  return ytLoading;
+}
+async function ytVideoFor(t) {
+  if (isYtId(t.id)) return t.id.slice(3);
+  if (t.id in ytMap) return ytMap[t.id];
+  const r = await api('/api/youtube/resolve?q=' + enc(window.AURA_SONG_QUERY(t.id)));
+  return (ytMap[t.id] = (r.video && r.video.id) || '');
+}
+function ytState(e) {
+  const t = E.track;
+  if (!t || !E.yt) return;
+  if (e.data === 1) { failCount = 0; const d = ytp.getDuration && ytp.getDuration(); if (d > 0 && TR[t.id]) TR[t.id].dur = d; }
+  if (e.data === 0 && S.playing && curId() === t.id) onEnded();
+}
+function ytError() { const t = E.track; if (t) failed(t, 'YouTube won’t play this video here'); }
+function ytStop() { E.yt = false; if (ytp && ytp.pauseVideo) { try { ytp.pauseVideo(); } catch (_) {} } const b = document.getElementById('yt-box'); if (b) b.hidden = true; }
+async function ytPlay(t, off) {
+  let vid;
+  try { vid = await ytVideoFor(t); } catch (e) { return failed(t, e.message); }
+  if (E.track !== t || !E.yt) return;
+  if (!vid) return failed(t, 'not found on YouTube');
+  let p;
+  try { p = await ytLoad(); } catch (e) { return failed(t, e.message); }
+  if (E.track !== t || !E.yt) return;
+  ytBox().hidden = false;
+  if (ytVid === vid) { p.seekTo(off || 0, true); p.playVideo(); }
+  else { ytVid = vid; p.loadVideoById({ videoId: vid, startSeconds: off || 0 }); }
+  p.setVolume(Math.round(Math.min(1, S.volume * S.volume) * 100));
+}
+const _aePlay = AE.play, _aePause = AE.pause, _aeSeek = AE.seekTo, _aePos = AE.position, _aeVol = AE.setVolume;
+AE.play = function (t, off = 0) {
+  if (YTM && (isYtId(t.id) || !/^(au|jm)_/.test(t.id))) {
+    audio.pause(); audio.dataset.id = '';
+    this.track = t; this.playing = true; this.offset = off; this.yt = true;
+    ytPlay(t, off);
+    return;
+  }
+  ytStop();
+  return _aePlay.call(this, t, off);
+};
+AE.pause = function () { if (this.yt) { this.playing = false; try { this.offset = ytp.getCurrentTime(); ytp.pauseVideo(); } catch (_) {} return; } return _aePause.call(this); };
+AE.seekTo = function (o) { if (this.yt) { this.offset = o; try { ytp.seekTo(o, true); } catch (_) {} return; } return _aeSeek.call(this, o); };
+AE.position = function () { if (this.yt) { try { return ytp.getCurrentTime() || this.offset; } catch (_) { return this.offset; } } return _aePos.call(this); };
+AE.setVolume = function (v) { if (this.yt) { try { ytp.setVolume(Math.round(Math.min(1, v * v) * 100)); } catch (_) {} } return _aeVol.call(this, v); };
 audio.addEventListener('waiting', () => { const s = document.querySelector('.lcd-title'); if (s) s.dataset.wait = '1'; });
 const _onEnded = onEnded;
 onEnded = function () {
@@ -467,6 +539,7 @@ const toks = (v) => new Set(normT(v).split(' ').filter((w) => w.length > 1 || /\
 const overlap = (a, b) => { if (!a.size || !b.size) return 0; let n = 0; a.forEach((w) => { if (b.has(w)) n++; }); return n / Math.min(a.size, b.size); };
 // Find a chart song in AURA's library: search by "title artist" and accept a result whose title (and artist) match.
 async function resolveChartSong(ct) {
+  if (ct.song) return ingSong(ct.song); // YouTube chart rows already carry their video: no search needed
   const key = normT(ct.title) + '|' + normT(ct.artist);
   if (key in RES) return RES[key];
   let found = 0;
