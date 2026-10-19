@@ -120,6 +120,22 @@ async function streamUrl(id, acct) {
   return js.streamUrl(id, acct);
 }
 
+// Another copy of a song from any source (not the one that just failed), found by "title artist".
+const words = (t) => String(t || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, ' ').split(/[^a-z0-9\u0900-\u097f]+/).filter((w) => w.length > 1);
+async function alternate(q, excludeId, acct) {
+  const want = words(q);
+  if (!want.length) return null;
+  const res = await search(q, 'songs', 1).catch(() => null);
+  for (const s of (res && res.songs) || []) {
+    if (s.id === excludeId) continue;
+    const have = new Set(words(s.title + ' ' + (s.artists || []).map((a) => a.name).join(' ')));
+    const hit = want.filter((w) => have.has(w)).length;
+    if (hit / want.length < 0.6) continue;
+    try { return { id: s.id, url: await streamUrl(s.id, acct) }; } catch (_) { /* try the next one */ }
+  }
+  return null;
+}
+
 // A plain report of whether each source can find and stream a song from where this runs.
 async function check(q = 'love') {
   const out = {};
@@ -139,6 +155,6 @@ async function check(q = 'love') {
   return out;
 }
 
-const sources = { list, search, streamUrl, sourceOf, check, audiusSearch, jamendoSearch, audiusSong, jamendoSong, enabled: on };
+const sources = { list, search, streamUrl, alternate, sourceOf, check, audiusSearch, jamendoSearch, audiusSong, jamendoSong, enabled: on };
 if (typeof module !== 'undefined' && module.exports) module.exports = sources;
 else globalThis.AuraSources = sources;

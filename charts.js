@@ -16,23 +16,24 @@ const APPLE_LIMIT = 100; // Apple's own lists are Top 100
 const CTTL = 30 * 60 * 1000;
 const ccache = new Map();
 
-// country code (as each site spells it) -> display name
-const SPOTIFY_PLACES = [['global', 'Global'], ['in', 'India'], ['de', 'Germany'], ['us', 'United States'], ['gb', 'United Kingdom'], ['au', 'Australia'],
-  ['ca', 'Canada'], ['fr', 'France'], ['br', 'Brazil'], ['jp', 'Japan'], ['pk', 'Pakistan'], ['ae', 'United Arab Emirates'], ['id', 'Indonesia'],
-  ['it', 'Italy'], ['es', 'Spain'], ['mx', 'Mexico']];
-const APPLE_PLACES = [['in', 'India'], ['de', 'Germany'], ['us', 'United States'], ['gb', 'United Kingdom'], ['au', 'Australia'], ['ca', 'Canada'],
-  ['fr', 'France'], ['br', 'Brazil'], ['jp', 'Japan'], ['pk', 'Pakistan'], ['ae', 'United Arab Emirates'], ['id', 'Indonesia'], ['it', 'Italy'], ['es', 'Spain'], ['mx', 'Mexico']];
+// Country codes each service publishes (kworb lists these for Spotify; Apple has storefronts in the same places).
+const SP_CODES = 'in us gb de au ca fr br jp pk ae id it es mx ad ar at by be bo bg cl co cr cy cz dk do ec eg sv ee fi gr gt hn hk hu is ie il kz lv lt lu my mt ma nl nz ni ng no pa py pe ph pl pt ro ru sa sg sk za kr se ch tw th tr ua uy ve vn'.split(' ');
+const AP_CODES = 'in us gb de au ca fr br jp pk ae id it es mx ar at be bg cl co cz dk eg fi gr hk hu ie il kr my nl nz ng no pe ph pl pt ro ru sa sg sk za se ch tw th tr ua vn'.split(' ');
+let REGION = null;
+try { REGION = new Intl.DisplayNames(['en'], { type: 'region' }); } catch (_) { /* old runtime: show the code */ }
+const NAME_FIX = { uk: 'GB' };
+const place = (c) => { if (c === 'global') return 'Global'; if (c === 'world') return 'Worldwide'; try { return (REGION && REGION.of((NAME_FIX[c] || c).toUpperCase())) || c.toUpperCase(); } catch (_) { return c.toUpperCase(); } };
+const SPOTIFY_PLACES = [['global', place('global')], ...SP_CODES.map((c) => [c, place(c)])];
+const APPLE_PLACES = AP_CODES.map((c) => [c, place(c)]);
 // kworb spells the UK 'uk' on its YouTube pages
-const YOUTUBE_PLACES = [['world', 'Worldwide'], ['in', 'India'], ['de', 'Germany'], ['us', 'United States'], ['uk', 'United Kingdom'], ['au', 'Australia'],
-  ['ca', 'Canada'], ['fr', 'France'], ['br', 'Brazil'], ['jp', 'Japan'], ['pk', 'Pakistan'], ['ae', 'United Arab Emirates'], ['id', 'Indonesia'],
-  ['it', 'Italy'], ['es', 'Spain'], ['mx', 'Mexico']];
+const YOUTUBE_PLACES = [['world', 'Worldwide'], ...['in', 'de', 'us', 'uk', 'au', 'ca', 'fr', 'br', 'jp', 'pk', 'ae', 'id', 'it', 'es', 'mx'].map((c) => [c, place(c)])];
 
 const SOURCES = [
   {
     id: 'spotify', name: 'Spotify Charts', blurb: 'The most streamed songs on Spotify, by country.',
     charts: [
       ...SPOTIFY_PLACES.map(([c, n]) => ({ id: `${c}_daily`, name: `Top Songs · ${n}`, desc: 'Daily', group: 'Daily charts', kind: 'songs' })),
-      ...SPOTIFY_PLACES.slice(0, 5).map(([c, n]) => ({ id: `${c}_weekly`, name: `Top Songs · ${n}`, desc: 'Weekly', group: 'Weekly charts', kind: 'songs' })),
+      ...SPOTIFY_PLACES.map(([c, n]) => ({ id: `${c}_weekly`, name: `Top Songs · ${n}`, desc: 'Weekly', group: 'Weekly charts', kind: 'songs' })),
     ],
   },
   {
