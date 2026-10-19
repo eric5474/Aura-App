@@ -1,0 +1,148 @@
+'use strict';
+/**
+ * AURA charts: what's popular right now, from three public places.
+ *   Spotify   - daily / weekly chart pages published by kworb.net (a public mirror of Spotify's charts)
+ *   Apple     - Apple's own public "Most Played" song feeds (rss.marketingtools.apple.com)
+ *   YouTube   - kworb.net's trending music videos per country
+ * These only give the list (rank, title, artist). The songs themselves play from AURA's library
+ * once a song is tapped. Runs in Node (server.js) and inside the Android app (bundled).
+ */
+const CENV = (typeof process !== 'undefined' && process.env) || (typeof globalThis !== 'undefined' && globalThis.AURA_ENV) || {};
+const KWORB = (CENV.AURA_CHARTS_KWORB || 'https://kworb.net').replace(/\/$/, '');
+const APPLE = (CENV.AURA_CHARTS_APPLE || 'https://rss.marketingtools.apple.com').replace(/\/$/, '');
+const CUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+const LIMIT = 50;
+const CTTL = 30 * 60 * 1000;
+const ccache = new Map();
+
+// country code (as each site spells it) -> display name
+const SPOTIFY_PLACES = [['global', 'Global'], ['in', 'India'], ['de', 'Germany'], ['us', 'United States'], ['gb', 'United Kingdom'], ['au', 'Australia'],
+  ['ca', 'Canada'], ['fr', 'France'], ['br', 'Brazil'], ['jp', 'Japan'], ['pk', 'Pakistan'], ['ae', 'United Arab Emirates'], ['id', 'Indonesia'],
+  ['it', 'Italy'], ['es', 'Spain'], ['mx', 'Mexico']];
+const APPLE_PLACES = [['in', 'India'], ['de', 'Germany'], ['us', 'United States'], ['gb', 'United Kingdom'], ['au', 'Australia'], ['ca', 'Canada'],
+  ['fr', 'France'], ['br', 'Brazil'], ['jp', 'Japan'], ['pk', 'Pakistan'], ['ae', 'United Arab Emirates'], ['id', 'Indonesia'], ['it', 'Italy'], ['es', 'Spain'], ['mx', 'Mexico']];
+// kworb spells the UK 'uk' on its YouTube pages
+const YOUTUBE_PLACES = [['world', 'Worldwide'], ['in', 'India'], ['de', 'Germany'], ['us', 'United States'], ['uk', 'United Kingdom'], ['au', 'Australia'],
+  ['ca', 'Canada'], ['fr', 'France'], ['br', 'Brazil'], ['jp', 'Japan'], ['pk', 'Pakistan'], ['ae', 'United Arab Emirates'], ['id', 'Indonesia'],
+  ['it', 'Italy'], ['es', 'Spain'], ['mx', 'Mexico']];
+
+const SOURCES = [
+  {
+    id: 'spotify', name: 'Spotify Charts', blurb: 'The most streamed songs on Spotify, by country.',
+    charts: [
+      ...SPOTIFY_PLACES.map(([c, n]) => ({ id: `${c}_daily`, name: `Top Songs · ${n}`, desc: 'Daily' })),
+      ...SPOTIFY_PLACES.slice(0, 5).map(([c, n]) => ({ id: `${c}_weekly`, name: `Top Songs · ${n}`, desc: 'Weekly' })),
+    ],
+  },
+  {
+    id: 'apple', name: 'Apple Music Charts', blurb: 'The most played songs on Apple Music, by country.',
+    charts: APPLE_PLACES.map(([c, n]) => ({ id: c, name: `Most Played · ${n}`, desc: 'Apple Music' })),
+  },
+  {
+    id: 'youtube', name: 'YouTube Music Charts', blurb: 'Music videos trending on YouTube, by country.',
+    charts: YOUTUBE_PLACES.map(([c, n]) => ({ id: c, name: `Trending · ${n}`, desc: 'Music videos' })),
+  },
+];
+const catalogue = () => SOURCES.map((s) => ({ id: s.id, name: s.name, blurb: s.blurb, charts: s.charts.map((c) => ({ ...c })) }));
+
+/* ---------------- helpers ---------------- */
+const CENT = { '&quot;': '"', '&amp;': '&', '&#039;': "'", '&#39;': "'", '&apos;': "'", '&lt;': '<', '&gt;': '>', '&nbsp;': ' ' };
+const cdec = (s) => String(s == null ? '' : s).replace(/&(quot|amp|#0?39|apos|lt|gt|nbsp);/g, (m) => CENT[m] || m)
+  .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n))).replace(/\s+/g, ' ').trim();
+const strip = (h) => cdec(String(h).replace(/<[^>]*>/g, ' '));
+
+async function getText(url) {
+  let res;
+  try { res = await fetch(url, { headers: { 'User-Agent': CUA, Accept: 'text/html,application/json,*/*' }, signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined }); }
+  catch (e) { throw new Error('Couldn’t reach the chart source. Check your internet connection'); }
+  if (!res.ok) throw new Error(`The chart source didn’t respond (${res.status})`);
+  return res.text();
+}
+
+/* ---------------- parsers ---------------- */
+function parseSpotify(html) {
+  const tracks = [];
+  for (const row of String(html).split(/<tr[\s>]/i).slice(1)) {
+    const m = /<a[^>]+href="[^"]*track\/([A-Za-z0-9]{10,30})\.html"[^>]*>([\s\S]*?)<\/a>/i.exec(row);
+    if (!m) continue;
+    const title = strip(m[2]);
+    const cell = row.slice(Math.max(0, row.lastIndexOf('<td', m.index)), m.index); // the "Artist - Title" cell, up to the title link
+    const artist = strip(cell).replace(/\s*[-–]\s*$/, '').replace(/\s+,/g, ',').trim();
+    if (!title) continue;
+    tracks.push({ title, artist, id: m[1] });
+    if (tracks.length >= LIMIT) break;
+  }
+  return tracks;
+}
+
+function cleanVideoTitle(raw) {
+  let t = cdec(raw)
+    .replace(/[\(\[\{][^\)\]\}]*(official|video|lyric|audio|visuali[sz]er|clip|live|mv|m\/v|4k|hd|remaster|premiere|teaser|trailer)[^\)\]\}]*[\)\]\}]/gi, ' ')
+    .replace(/\s*[|｜].*$/, '')
+    .replace(/\b(official\s+(music\s+)?video|official\s+audio|lyric\s+video|music\s+video)\b/gi, ' ')
+    .replace(/\s+/g, ' ').trim();
+  t = t.replace(/[\s\-–—:]+$/, '');
+  const i = t.search(/\s[-–—]\s/);
+  if (i > 0) return { artist: t.slice(0, i).trim(), title: t.slice(i).replace(/^\s[-–—]\s/, '').trim() };
+  return { artist: '', title: t };
+}
+
+function parseYouTube(html) {
+  const pieces = String(html).split(/<table[\s>]/i);
+  const tables = [];
+  for (let i = 1; i < pieces.length; i++) {
+    const prev = pieces[i - 1];
+    const heading = strip(i === 1 ? prev : prev.slice(prev.lastIndexOf('</table>') + 8)).slice(-60); // the title just above this table
+    const rows = [];
+    for (const row of pieces[i].split(/<tr[\s>]/i).slice(1)) {
+      const m = /<a[^>]+href="[^"]*video\/([A-Za-z0-9_-]{6,15})\.html"[^>]*>([\s\S]*?)<\/a>/i.exec(row);
+      if (m && strip(m[2])) rows.push({ id: m[1], raw: strip(m[2]) });
+    }
+    if (rows.length) tables.push({ rows, music: /music/i.test(heading) });
+  }
+  if (!tables.length) return [];
+  const pick = tables.find((t) => t.music) || tables[0];
+  const seen = new Set();
+  const out = [];
+  for (const r of pick.rows) {
+    const c = cleanVideoTitle(r.raw);
+    const key = (c.artist + '|' + c.title).toLowerCase();
+    if (!c.title || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ title: c.title, artist: c.artist, id: r.id });
+    if (out.length >= LIMIT) break;
+  }
+  return out;
+}
+
+function parseApple(text) {
+  let j;
+  try { j = JSON.parse(text); } catch (_) { throw new Error('Apple Music’s chart came back in an unexpected form'); }
+  const res = (j.feed && j.feed.results) || [];
+  return res.slice(0, LIMIT).map((r) => ({
+    title: cdec(r.name), artist: cdec(r.artistName), id: String(r.id || ''),
+    image: r.artworkUrl100 ? String(r.artworkUrl100).replace(/\/\d+x\d+(bb)?\.(jpg|png)$/i, '/300x300bb.jpg') : '',
+  })).filter((r) => r.title);
+}
+
+/* ---------------- public API ---------------- */
+async function chart(source, id) {
+  const src = SOURCES.find((s) => s.id === source);
+  const meta = src && src.charts.find((c) => c.id === id);
+  if (!meta) throw new Error('That chart doesn’t exist');
+  const key = `${source}:${id}`;
+  const hit = ccache.get(key);
+  if (hit && hit.exp > Date.now()) return hit.v;
+  let tracks;
+  if (source === 'spotify') tracks = parseSpotify(await getText(`${KWORB}/spotify/country/${id}.html`));
+  else if (source === 'apple') tracks = parseApple(await getText(`${APPLE}/api/v2/${id}/music/most-played/${LIMIT}/songs.json`));
+  else tracks = parseYouTube(await getText(id === 'world' ? `${KWORB}/youtube/trending.html` : `${KWORB}/youtube/trending/${id}.html`));
+  if (!tracks.length) throw new Error('This chart is empty right now. Try again later');
+  const v = { source, id, title: meta.name, desc: meta.desc, sourceName: src.name, tracks: tracks.map((t, i) => ({ rank: i + 1, ...t })) };
+  ccache.set(key, { v, exp: Date.now() + CTTL });
+  return v;
+}
+
+const charts = { catalogue, chart, parseSpotify, parseApple, parseYouTube, cleanVideoTitle };
+if (typeof module !== 'undefined' && module.exports) module.exports = charts;
+else globalThis.AuraCharts = charts;

@@ -133,6 +133,21 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': buf.length, 'Accept-Ranges': 'bytes' });
     return res.end(buf);
   }
+  // chart sources (stand-ins for kworb.net and Apple's chart feed; shapes follow what those sites publish)
+  const chartSongs = [4, 7, 'x', 2, 11, 5].map((n, i) => (n === 'x' ? { title: 'Nonexistent Tune', artist: 'Nobody Known', id: 'zz' } : { title: `Mock Song ${n} & Friends`, artist: ARTISTS[(n - 1) % 4].name, id: 'sg' + (n - 1) }));
+  if (u.pathname.startsWith('/kworb/spotify/country/')) {
+    const rows = chartSongs.map((t, i) => `<tr><td>${i + 1}</td><td class="mp">=</td><td class="text"><div><a href="../artist/${i}.html">${t.artist}</a> - <a href="../track/${String(i).padStart(22, 'a')}.html">${t.title.replace(/&/g, '&amp;')}</a></div></td><td>9</td></tr>`).join('');
+    res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(`<html><body><h1>Spotify Daily Chart</h1><table><tr><th>Pos</th><th>P+</th><th>Artist and Title</th></tr>${rows}</table></body></html>`);
+  }
+  if (u.pathname.startsWith('/kworb/youtube/trending')) {
+    const rows = chartSongs.map((t, i) => `<tr><td>${i + 1}</td><td>NEW</td><td><a href="video/vid${i}abcdefg.html">${t.artist} - ${t.title.replace(/&/g, '&amp;')} (Official Music Video)</a></td></tr>`).join('');
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    return res.end(`<html><body><h2>Overall</h2><table><tr><td>1</td><td><a href="video/gamegamegam.html">Some Gameplay Video</a></td></tr></table><h2>Music</h2><table>${rows}</table></body></html>`);
+  }
+  if (u.pathname.startsWith('/apple/api/v2/')) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ feed: { title: 'Top Songs', country: 'us', results: chartSongs.map((t, i) => ({ id: String(100 + i), name: t.title, artistName: t.artist, artworkUrl100: `${ORIGIN}/img/ap${i}/100x100bb.jpg`, kind: 'songs' })) } }));
+  }
   if (u.pathname.startsWith('/img/')) {
     const h = [...u.pathname].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
     res.writeHead(200, { 'Content-Type': 'image/svg+xml' });

@@ -90,6 +90,17 @@ npm run android:apk        # APK at android/app/build/outputs/apk/debug/app-debu
 
 If you have Pro but AURA shows 128 kbps, open "Show what JioSaavn returned" on the Profile screen and share that list of field names (it contains no values).
 
+## Charts on Home
+
+Home shows Top Picks for You and Recently Played first, then three chart options: **Spotify Charts**, **Apple Music Charts** and **YouTube Music Charts**. Each opens every chart from that service (by country); tapping a chart shows its ranked songs, and tapping a song plays it from AURA's own library (the first 20 songs from the one you tap are queued; songs the library doesn't have are skipped and say so).
+
+Where the lists come from (they give rank, title and artist only):
+- **Spotify:** kworb.net's public copies of Spotify's daily and weekly country charts (Spotify's own charts need a login).
+- **Apple Music:** Apple's public "Most Played" song feeds.
+- **YouTube:** kworb.net's trending music videos per country. YouTube has no public Music chart feed, so this is the closest public list; video titles are cleaned up to "artist - song" before matching.
+
+Charts are cached for 30 minutes. If a source changes its pages, that chart shows "Couldn't load this chart" while the others keep working. Test overrides: `AURA_CHARTS_KWORB`, `AURA_CHARTS_APPLE`.
+
 ## What's connected
 
 | AURA screen | JioSaavn data |
@@ -107,6 +118,9 @@ If you have Pro but AURA shows 128 kbps, open "Show what JioSaavn returned" on t
 Your library, playlists, loved songs, recently played items and settings are saved in your browser. The equalizer, Sound Check, sleep timer, queue, shuffle and repeat all work on the live streams.
 
 ## Backend API
+
+- `GET /api/charts`: the list of chart sources and their charts
+- `GET /api/charts/:source/:chart`: one chart's ranked songs (`spotify`, `apple`, `youtube`)
 
 - `POST /api/account/connect` `{session}`: checks a JioSaavn sign-in cookie, returns a sealed account token
 - `GET /api/account/status?acct=TOKEN`
