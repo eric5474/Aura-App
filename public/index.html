@@ -526,6 +526,82 @@ kbd{font-family:var(--font-m);font-size:11.5px;background:var(--hover);border:1p
 .field.pal-custom input[type=color]{width:56px!important;flex:none;height:34px;border:1px solid var(--line);border-radius:8px;background:none;padding:2px;cursor:pointer}
 .field.pal-custom input[type=range]{flex:1;max-width:190px;width:auto!important}
 @media (max-width:480px){.pal-grid{grid-template-columns:repeat(3,1fr)}}
+#bg-pic{position:fixed;inset:-60px;z-index:-1;background:center/cover no-repeat;filter:blur(var(--bg-blur,10px));pointer-events:none}
+#bg-pic::after{content:"";position:absolute;inset:0;background:var(--scrim,rgba(0,0,0,.4))}
+html:not([data-bgpic]) #bg-pic{display:none}
+.bg-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bg-thumb{width:64px;height:40px;border-radius:8px;border:1px solid var(--line);background:center/cover no-repeat;flex:none}
+.bg-blur{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bg-blur input[type=range]{flex:1;max-width:240px;width:auto!important}
+.bg-blur output{min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
+.bg-hint{font-size:12px;color:var(--muted)}
+/* chart pages: each service laid out like its own chart page */
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.cp{--cp-acc:var(--accent);--cp-fg:var(--accent-fg);margin:-4px -4px 0}
+.cp-head{display:flex;gap:22px;align-items:flex-end;padding:22px 20px 18px;border-radius:16px;margin-bottom:6px}
+.cp-hd{min-width:0;display:flex;flex-direction:column;gap:6px}
+.cp-eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.8}
+.cp-head h1{font-family:var(--font-d);font-size:clamp(26px,4.6vw,46px);line-height:1.05;letter-spacing:-.02em;margin:0}
+.cp-sub{margin:0;color:var(--muted);font-size:14px}
+.cp-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.cp-play,.cp-shuf{border:0;border-radius:999px;padding:10px 22px;font:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.cp-play{background:var(--cp-acc);color:var(--cp-fg)}
+.cp-play:hover{filter:brightness(1.08)}
+.cp-shuf{background:var(--hover);color:inherit;border:1px solid var(--line)}
+.cp-play .ic,.cp-shuf .ic{width:16px;height:16px}
+.cp-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.cp-tabs{display:inline-flex;gap:6px;flex-wrap:wrap}
+.cp-tab{border:1px solid var(--line);background:none;color:inherit;border-radius:999px;padding:6px 14px;font:inherit;font-weight:600;font-size:13px;cursor:pointer}
+.cp-tab.on{background:var(--cp-acc);border-color:var(--cp-acc);color:var(--cp-fg)}
+.cp-place select{appearance:none;-webkit-appearance:none;border:1px solid var(--line);background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23999' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 12px center;color:inherit;border-radius:999px;padding:7px 34px 7px 14px;font:inherit;font-weight:600;font-size:13px;cursor:pointer;max-width:240px}
+.cp-list{display:flex;flex-direction:column}
+.cp-row{display:grid;align-items:center;border:0;background:none;color:inherit;text-align:left;cursor:pointer;font:inherit;width:100%}
+.cp-row:hover{background:var(--hover)}
+.cp-n{font-family:var(--font-d);font-weight:700;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+.cp-cover{display:block;overflow:hidden;flex:none;position:relative}
+.cp-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.cp-ph{display:grid;place-items:center;color:#fff;font-family:var(--font-d);font-weight:800;background:linear-gradient(135deg,hsl(var(--h) 70% 46%),hsl(calc(var(--h) + 50) 65% 28%))}
+.cp-t{display:flex;flex-direction:column;min-width:0}
+.cp-t b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-t small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-go{opacity:0;color:var(--cp-acc);display:grid;place-items:center;padding-right:6px}
+.cp-go .ic{width:18px;height:18px}
+.cp-row:hover .cp-go,.cp-row:focus-visible .cp-go{opacity:1}
+/* Spotify: dark table, green accent */
+.cp-spotify{--cp-acc:#1ed760;--cp-fg:#000;--active:rgba(30,215,96,.18)}
+.cp-spotify .cp-head{background:linear-gradient(180deg,rgba(30,215,96,.42),rgba(30,215,96,.06) 85%,transparent);padding-top:34px}
+.cp-spotify .cp-eyebrow{color:#1ed760;opacity:1}
+.cp-spotify .cp-cols{display:grid;grid-template-columns:56px minmax(0,1fr);padding:8px 12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin:6px 0 4px}
+.cp-spotify .cp-cols span:first-child{text-align:center}
+.cp-spotify .cp-row{grid-template-columns:56px 44px minmax(0,1fr) 34px;gap:14px;padding:8px 12px;border-radius:6px;min-height:62px}
+.cp-spotify .cp-n{font-size:16px;color:inherit}
+.cp-spotify .cp-row:nth-child(-n+3) .cp-n{color:#1ed760}
+.cp-spotify .cp-cover{width:44px;height:44px;border-radius:4px}
+.cp-spotify .cp-t b{font-size:15.5px}
+/* Apple Music: Top 100 header with artwork, red accent, numbered list with hairlines */
+.cp-apple{--cp-acc:#fa233b;--cp-fg:#fff;--active:rgba(250,35,59,.16)}
+.cp-apple .cp-head{align-items:flex-end;background:linear-gradient(135deg,rgba(250,35,59,.28),rgba(250,35,59,.04) 70%,transparent)}
+.cp-apple .cp-eyebrow{color:#ff6b7d;opacity:1}
+.cp-mosaic{display:grid;grid-template-columns:1fr 1fr;gap:3px;width:176px;height:176px;border-radius:12px;overflow:hidden;flex:none;box-shadow:0 10px 30px rgba(0,0,0,.35);background:var(--surface)}
+.cp-mosaic img,.cp-mosaic i{width:100%;height:100%;object-fit:cover;display:block;background:linear-gradient(135deg,#fa233b,#7a0f1c)}
+.cp-apple .cp-play,.cp-apple .cp-shuf{border-radius:10px;padding:9px 26px}
+.cp-apple .cp-shuf{background:var(--hover);border:0;color:inherit}
+.cp-apple .cp-list{margin-top:8px}
+.cp-apple .cp-row{grid-template-columns:40px 52px minmax(0,1fr) 34px;gap:14px;padding:9px 10px;border-bottom:1px solid var(--line);min-height:68px;border-radius:0}
+.cp-apple .cp-n{font-size:15px;font-weight:600}
+.cp-apple .cp-cover{width:52px;height:52px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.cp-apple .cp-t b{font-size:15px;font-weight:600}
+@media (max-width:560px){.cp-apple .cp-head{flex-direction:column;align-items:flex-start}.cp-mosaic{width:132px;height:132px}}
+/* YouTube Music: trending rows with video thumbnails, red accent */
+.cp-youtube{--cp-acc:#ff2d3d;--cp-fg:#fff;--active:rgba(255,45,61,.16)}
+.cp-youtube .cp-head{background:linear-gradient(180deg,rgba(255,45,61,.34),rgba(255,45,61,.05) 85%,transparent)}
+.cp-youtube .cp-eyebrow{color:#ff5a66;opacity:1}
+.cp-youtube .cp-play{border-radius:999px;background:#fff;color:#0f0f0f}
+.cp-youtube .cp-row{grid-template-columns:34px 120px minmax(0,1fr) 34px;gap:14px;padding:8px 10px;border-radius:10px;min-height:80px}
+.cp-youtube .cp-n{font-size:16px}
+.cp-youtube .cp-cover{width:120px;height:68px;border-radius:8px;background:#000}
+.cp-youtube .cp-t b{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:15px}
+@media (max-width:480px){.cp-youtube .cp-row{grid-template-columns:26px 96px minmax(0,1fr)}.cp-youtube .cp-cover{width:96px;height:54px}.cp-youtube .cp-go{display:none}.cp-head{padding:16px 12px}}
 </style>
 <script>
 /* Colour themes: a two-colour gradient + an accent. Default "Ember" is orange to black. "Classic" is the original teal look
@@ -577,6 +653,7 @@ kbd{font-family:var(--font-m);font-size:11.5px;background:var(--hover);border:1p
       VARS.forEach(function(v){r.style.removeProperty(v)});
       if(st) st.textContent='';
       r.removeAttribute('data-palette');
+      if(window.AuraPicture) window.AuraPicture.refresh();
       return;
     }
     var a=rgb(t.c1), b=rgb(t.c2), mean=mix(a,b,.5), light=lum(mean)>.42;
@@ -608,9 +685,52 @@ kbd{font-family:var(--font-m);font-size:11.5px;background:var(--hover);border:1p
     st.textContent='html[data-palette] body{background:linear-gradient(var(--angle),var(--c1),var(--c2)) fixed}'+
       'html[data-palette] .sidebar,html[data-palette] .panel{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}';
     var m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute('content',t.c1);
+    if(window.AuraPicture) window.AuraPicture.refresh();
   }
 
-  cur=load(); apply(cur);
+  /* Background picture: stored on this device, blurred 10%-50% (50% = 20px of blur), with a scrim so text stays readable. */
+  var PKEY='aura-bgpic-v1', pic=null, picEl=null;
+  function loadPic(){try{var j=JSON.parse(localStorage.getItem(PKEY)||'null');if(j&&typeof j.data==='string'&&j.data.indexOf('data:image/')===0) return {data:j.data,blur:Math.min(50,Math.max(10,Number(j.blur)||25))}}catch(e){}return null}
+  function savePic(){try{if(pic) localStorage.setItem(PKEY,JSON.stringify(pic)); else localStorage.removeItem(PKEY); return true}catch(e){return false}}
+  function applyPic(){
+    var r=document.documentElement;
+    if(!pic){ r.removeAttribute('data-bgpic'); if(picEl) picEl.style.backgroundImage='none'; return }
+    if(!picEl){picEl=document.createElement('div');picEl.id='bg-pic';picEl.setAttribute('aria-hidden','true');r.appendChild(picEl)}
+    picEl.style.backgroundImage='url("'+pic.data+'")';
+    r.style.setProperty('--bg-blur',(pic.blur*0.4).toFixed(1)+'px');
+    var bg=getComputedStyle(r).getPropertyValue('--bg').trim(), dark=true;
+    if(/^#[0-9a-f]{6}$/i.test(bg)) dark=lum(rgb(bg))<.42;
+    r.style.setProperty('--scrim',dark?'rgba(0,0,0,.4)':'rgba(255,255,255,.4)');
+    r.setAttribute('data-bgpic','1');
+  }
+  function shrink(file,maxSide,q){
+    return new Promise(function(res,rej){
+      var url=URL.createObjectURL(file), im=new Image();
+      im.onload=function(){URL.revokeObjectURL(url);var k=Math.min(1,maxSide/Math.max(im.naturalWidth,im.naturalHeight)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.naturalWidth*k));c.height=Math.max(1,Math.round(im.naturalHeight*k));c.getContext('2d').drawImage(im,0,0,c.width,c.height);try{res(c.toDataURL('image/jpeg',q))}catch(e){rej(e)}};
+      im.onerror=function(){URL.revokeObjectURL(url);rej(new Error('That file isn’t a picture AURA can read'))};
+      im.src=url;
+    });
+  }
+  async function setPicture(file){
+    if(!file||!/^image\//.test(file.type)) throw new Error('Choose an image file (JPG, PNG, WebP…)');
+    var blur=pic?pic.blur:25, sizes=[[1920,.82],[1400,.78],[1000,.72]], data=null, kept=false;
+    for(var i=0;i<sizes.length;i++){
+      data=await shrink(file,sizes[i][0],sizes[i][1]); pic={data:data,blur:blur};
+      if(savePic()){kept=true;break}
+    }
+    applyPic();
+    return kept;
+  }
+  window.AuraPicture={
+    get:function(){return pic?{blur:pic.blur,data:pic.data}:null},
+    set:setPicture,
+    blur:function(pct){if(!pic) return;pic.blur=Math.min(50,Math.max(10,Math.round(pct)));applyPic();savePic()},
+    remove:function(){pic=null;savePic();applyPic()},
+    refresh:applyPic
+  };
+  pic=loadPic();
+
+  cur=load(); apply(cur); applyPic();
   window.AuraPalette={
     PRESETS:PRESETS, ratio:ratio, rgb:rgb,
     get:function(){return cur?{c1:cur.c1,c2:cur.c2,accent:cur.accent,angle:cur.angle}:null},
@@ -1197,6 +1317,7 @@ const VIEWS={
     ${extraAccountRows()}
     ${A.acct?`<div class="acct-row"><span><b>AURA account</b><small>${esc(A.acct.email)} · kept on this device</small></span><button class="btn" data-act="aura-signout">Sign Out</button></div>`:''}
    </div></section>
+   <section><div class="shelf-head"><h2>Theme</h2></div><div class="acct" style="padding:6px 16px 16px">${palUI()}</div></section>
    ${topAr.length?shelf('Your Top Artists',topAr.map(artistTile)):''}
    ${top.length?`<section><div class="shelf-head"><h2>Your Top Songs</h2><span class="sub">By number of plays</span></div><div class="top-songs">${trackList(top,'Your Top Songs',{art:1,noAlb:1})}</div></section>`:`<div class="empty">${ic('note')}<b>Your top songs and artists show up here</b><span>Play some music to get started.</span></div>`}
    ${shelf('Recently Played',S.recent.map(recentTile).filter(Boolean))}`},
@@ -1335,24 +1456,43 @@ function settingsModal(tab='playback'){const s=S.settings,g=s.eqCustom||EQ[s.eq]
 function palUI(){
   const P=window.AuraPalette,t=P.get(),same=(a,b)=>t&&a.c1.toLowerCase()===t.c1.toLowerCase()&&a.c2.toLowerCase()===t.c2.toLowerCase()&&a.accent.toLowerCase()===t.accent.toLowerCase()&&Number(a.angle)===Number(t.angle);
   const sw=(p)=>`<button type="button" class="pal-sw" data-act="pal-pick" data-id="${p.id}" aria-pressed="${same(p,t)}" title="${p.name}"><i style="background:linear-gradient(${p.angle}deg,${p.c1},${p.c2});--dot:${p.accent}"></i><span>${p.name}</span></button>`;
-  const v=t||P.PRESETS[0];
-  return `<div class="field"><span>Colour theme</span>
+  const v=t||P.PRESETS[0], pic=window.AuraPicture.get(), bl=pic?pic.blur:25;
+  return `<div class="pal-root"><div class="field"><span>Colour theme</span>
    <div class="pal-grid">${P.PRESETS.map(sw).join('')}
     <button type="button" class="pal-sw" data-act="pal-classic" aria-pressed="${!t}" title="Classic"><i style="background:linear-gradient(160deg,#f8faf9,#3ac9be 55%,#111514);--dot:#0a807a"></i><span>Classic</span></button></div></div>
-   <div class="field pal-custom"><span>Make your own</span>
+   <div class="field pal-custom"><span>Background picture</span>
+    <div class="bg-row"><span class="bg-thumb" style="${pic?`background-image:url('${pic.data}')`:'display:none'}"></span>
+     <button type="button" class="btn" data-act="bg-choose">${ic('plus')}${pic?'Change picture…':'Choose picture…'}</button>
+     <button type="button" class="btn" data-act="bg-remove" ${pic?'':'disabled'}>Remove</button>
+     <input type="file" id="bg-file" accept="image/*" hidden></div>
+    <label class="bg-blur">Blur <input type="range" class="rng bg-in" min="10" max="50" step="1" value="${bl}" style="--p:${(bl-10)/40*100}%" ${pic?'':'disabled'} aria-label="Background blur, 10 to 50 percent"><output>${bl}%</output></label>
+    <small class="bg-hint">${pic?'Slide to blur the picture from 10% to 50%. The picture stays on this device.':'Pick a photo, then slide to blur it from 10% to 50%. It stays on this device.'}</small></div>
+   <div class="field pal-custom"><span>Make your own colours</span>
     <label>Gradient start <input type="color" class="pal-in" data-k="c1" value="${v.c1}" aria-label="Gradient start colour"></label>
     <label>Gradient end <input type="color" class="pal-in" data-k="c2" value="${v.c2}" aria-label="Gradient end colour"></label>
     <label>Accent <input type="color" class="pal-in" data-k="accent" value="${v.accent}" aria-label="Accent colour"></label>
     <label>Angle <input type="range" class="rng pal-in" data-k="angle" min="0" max="360" step="5" value="${v.angle}" style="--p:${v.angle/360*100}%" aria-label="Gradient angle"><output>${v.angle}°</output></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-act="pal-swap">⇄ Swap colours</button><button type="button" class="btn" data-act="pal-random">🎲 Surprise me</button><button type="button" class="btn" data-act="pal-reset">Reset to orange &amp; black</button></div>
-    <small class="muted">Text switches between light and dark automatically so it stays readable with any colours. Your choice is saved on this device.</small></div>`;
+    <small class="muted">Text switches between light and dark automatically so it stays readable. Your choices are saved on this device.</small></div></div>`;
 }
-function palRefresh(){const m=document.querySelector('fieldset[data-tab="look"]');if(!m) return;const h=m.querySelector('.pal-grid');if(!h) return;
+function palRefresh(){
+  const P=window.AuraPalette,t=P.get(),pic=window.AuraPicture.get();
+  const same=(p)=>t&&p.c1.toLowerCase()===t.c1.toLowerCase()&&p.c2.toLowerCase()===t.c2.toLowerCase()&&p.accent.toLowerCase()===t.accent.toLowerCase()&&Number(p.angle)===Number(t.angle);
   const keep=document.activeElement&&document.activeElement.classList&&document.activeElement.classList.contains('pal-in')?document.activeElement.dataset.k:null;
-  const t=window.AuraPalette.get(),same=(p)=>t&&p.c1.toLowerCase()===t.c1.toLowerCase()&&p.c2.toLowerCase()===t.c2.toLowerCase()&&p.accent.toLowerCase()===t.accent.toLowerCase()&&Number(p.angle)===Number(t.angle);
-  h.querySelectorAll('.pal-sw').forEach(b=>{const p=window.AuraPalette.PRESETS.find(x=>x.id===b.dataset.id);b.setAttribute('aria-pressed',String(p?same(p):(b.dataset.act==='pal-classic'&&!t)))});
-  if(t) m.querySelectorAll('.pal-in').forEach(i=>{if(i.dataset.k!==keep) i.value=t[i.dataset.k];if(i.dataset.k==='angle'){i.style.setProperty('--p',t.angle/360*100+'%');i.nextElementSibling.textContent=t.angle+'°'}})}
+  document.querySelectorAll('.pal-root').forEach(m=>{
+    m.querySelectorAll('.pal-sw').forEach(b=>{const p=P.PRESETS.find(x=>x.id===b.dataset.id);b.setAttribute('aria-pressed',String(p?same(p):(b.dataset.act==='pal-classic'&&!t)))});
+    if(t) m.querySelectorAll('.pal-in').forEach(i=>{if(i.dataset.k!==keep) i.value=t[i.dataset.k];if(i.dataset.k==='angle'){i.style.setProperty('--p',t.angle/360*100+'%');i.nextElementSibling.textContent=t.angle+'°'}});
+    const th=m.querySelector('.bg-thumb'),rm=m.querySelector('[data-act="bg-remove"]'),ch=m.querySelector('[data-act="bg-choose"]'),sl=m.querySelector('.bg-in'),hint=m.querySelector('.bg-hint');
+    if(th){th.style.display=pic?'':'none';th.style.backgroundImage=pic?`url('${pic.data}')`:'none'}
+    if(rm) rm.disabled=!pic;
+    if(ch) ch.lastChild.textContent=pic?'Change picture…':'Choose picture…';
+    if(sl){sl.disabled=!pic;if(pic&&document.activeElement!==sl) sl.value=pic.blur;const bl=pic?pic.blur:Number(sl.value);sl.style.setProperty('--p',(bl-10)/40*100+'%');sl.nextElementSibling.textContent=bl+'%'}
+    if(hint) hint.textContent=pic?'Slide to blur the picture from 10% to 50%. The picture stays on this device.':'Pick a photo, then slide to blur it from 10% to 50%. It stays on this device.';
+  });
+}
 function palAct(a,el){const P=window.AuraPalette;
+  if(a==='bg-choose'){const f=el.closest('.pal-root').querySelector('#bg-file');f.value='';f.click();return}
+  if(a==='bg-remove'){window.AuraPicture.remove();palRefresh();return}
   if(a==='pal-pick'){const p=P.PRESETS.find(x=>x.id===el.dataset.id);P.set({c1:p.c1,c2:p.c2,accent:p.accent,angle:p.angle})}
   else if(a==='pal-classic') P.classic();
   else if(a==='pal-reset') P.reset();
@@ -1361,8 +1501,14 @@ function palAct(a,el){const P=window.AuraPalette;
     const hsl=(hh,s,l)=>{const q=s*Math.min(l,1-l),f=n=>{const k=(n+hh/30)%12,c=l-q*Math.max(-1,Math.min(k-3,9-k,1));return Math.round(255*c).toString(16).padStart(2,'0')};return '#'+f(0)+f(8)+f(4)};
     P.set({c1:hsl(h,.75,.42+Math.random()*.15),c2:hsl(h2,.7,.05+Math.random()*.12),accent:hsl((h+20)%360,.95,.62),angle:[135,150,160,180,200][Math.floor(Math.random()*5)]})}
   palRefresh()}
-document.addEventListener('input',e=>{const t=e.target;if(!t.classList||!t.classList.contains('pal-in')) return;
+document.addEventListener('input',e=>{const t=e.target;if(!t.classList) return;
+  if(t.classList.contains('bg-in')){window.AuraPicture.blur(Number(t.value));palRefresh();return}
+  if(!t.classList.contains('pal-in')) return;
   window.AuraPalette.set({[t.dataset.k]:t.dataset.k==='angle'?Number(t.value):t.value});palRefresh()});
+document.addEventListener('change',async e=>{const t=e.target;if(!t||t.id!=='bg-file'||!t.files||!t.files[0]) return;
+  try{const kept=await window.AuraPicture.set(t.files[0]);palRefresh();toast(kept?'Background picture set':'Background set, but it’s too big to remember after you close AURA')}
+  catch(x){toast(x.message||'Couldn’t use that picture')}
+  t.value=''});
 
 /* =========================================================
    Events
@@ -1399,7 +1545,7 @@ function act(n,el,e){const id=el.dataset.id,sh=!!el.dataset.shuffle;
   case 'edit-profile':profileModal();break;
   case 'aura-signout':signOut();break;
   case 'stab':$$('#modal-root fieldset').forEach(f=>f.hidden=f.dataset.tab!==el.dataset.k);$$('#modal-root [data-act="stab"]').forEach(b=>b.classList.toggle('on',b===el));break;
-  case 'pal-pick':case 'pal-classic':case 'pal-reset':case 'pal-swap':case 'pal-random':palAct(n,el);break;
+  case 'pal-pick':case 'pal-classic':case 'pal-reset':case 'pal-swap':case 'pal-random':case 'bg-choose':case 'bg-remove':palAct(n,el);break;
   case 'theme':S.theme=el.dataset.k;applyTheme();persist();$$('[data-act="theme"]').forEach(b=>b.classList.toggle('on',b===el));break;
   case 'lyric-size':S.settings.lyric=el.dataset.k;applyTheme();persist();$$('[data-act="lyric-size"]').forEach(b=>b.classList.toggle('on',b===el));break;
   case 'sleep':{const m=+el.dataset.m;S.sleep=m?{until:Date.now()+m*60000}:null;toast(m?`Playback will stop in ${m} minutes`:'Sleep timer off');settingsModal('playback');break}

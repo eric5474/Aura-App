@@ -534,18 +534,59 @@ VIEWS.charts = function (sid) {
   return banner + `<p class="muted" style="margin:-8px 0 8px">${esc(cat.blurb)} Tap a chart, then tap a song to play it.</p>` +
     groups.map((g) => { const cs = cat.charts.filter((c) => (c.group || 'Charts') === g); return `<section><div class="shelf-head"><h2>${esc(g)}</h2><span class="sub">${cs.length} charts</span></div><div class="cchart-grid">${cs.map(pill).join('')}</div></section>`; }).join('');
 };
+/* A chart page laid out the way each service lays out its own chart:
+   Spotify - big title, Daily/Weekly tabs, country picker, table with # / Title columns, green accent;
+   Apple Music - "Top 100" header with artwork mosaic, Songs/Albums/Music videos tabs, numbered list with artwork, red accent;
+   YouTube Music - trending list with video thumbnails, red accent. (Layout and colours only: no logos, and the data is limited to what the public chart sources give.) */
+const placeOf = (c) => String(c.name).split(' · ').slice(1).join(' · ') || c.name;
+const hasChart = (sid, id) => !!(CHCAT[sid] && CHCAT[sid].charts.some((x) => x.id === id));
+function chartTabs(sid, id) {
+  let t = [];
+  if (sid === 'spotify') { const m = /^(.+)_(daily|weekly)$/.exec(id); if (m) t = [['Daily', m[1] + '_daily', m[2] === 'daily'], ['Weekly', m[1] + '_weekly', m[2] === 'weekly']]; }
+  else if (sid === 'apple') { const [cc, w] = id.split('_'); t = [['Songs', cc, !w], ['Albums', cc + '_albums', w === 'albums'], ['Music videos', cc + '_videos', w === 'videos']]; }
+  return t.filter((x) => x[2] || hasChart(sid, x[1]));
+}
+function chartPicker(sid, id) {
+  const cat = CHCAT[sid], me = cat && cat.charts.find((x) => x.id === id);
+  if (!me) return '';
+  const sibs = cat.charts.filter((x) => (x.group || '') === (me.group || ''));
+  return `<label class="cp-place"><span class="sr">Country</span><select data-chart-place="${esc(sid)}" aria-label="Country or region">${sibs.map((x) => `<option value="${esc(x.id)}" ${x.id === id ? 'selected' : ''}>${esc(placeOf(x))}</option>`).join('')}</select></label>`;
+}
+document.addEventListener('change', (e) => { const el = e.target; if (el && el.dataset && el.dataset.chartPlace) go('chart', el.dataset.chartPlace + ':' + el.value); });
+const cpCover = (t) => {
+  if (t.image) return `<span class="cp-cover"><img src="${esc(t.image)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
+  const h = hash(t.title + (t.artist || '')) % 360;
+  return `<span class="cp-cover cp-ph" style="--h:${h}" aria-hidden="true">${esc((t.title || '?').trim().charAt(0).toUpperCase())}</span>`;
+};
 VIEWS.chart = function (cid) {
   const [sid, id] = String(cid).split(':');
   const src = chartSrc(sid) || CHART_SOURCES[0];
   const key = 'chart:' + cid;
   const n = need(key, () => api(`/api/charts/${enc(sid)}/${enc(id)}`).then((r) => { CH[cid] = r; }));
-  const nm = (CHCAT[sid] && (CHCAT[sid].charts.find((x) => x.id === id) || {}).name) || 'Chart';
-  const banner = (c) => `<div class="banner-art" style="--a:${src.a};--b:${src.b};min-height:190px"><div><div class="eyebrow">${esc(src.name)}${c && c.desc ? ' · ' + esc(c.desc) : ''}</div><h1>${esc(c ? c.title : nm)}</h1>${c ? `<div class="dbtns"><button class="btn primary" data-act="play-chart" data-id="${esc(cid)}" data-i="0">${ic('play')}Play</button><button class="btn" data-act="play-chart" data-id="${esc(cid)}" data-i="0" data-shuffle="1">${ic('shuffle')}Shuffle</button></div>` : ''}</div></div>`;
-  if (n === 'err') return banner() + errBox(key, 'this chart');
-  if (!n || !CH[cid]) return banner() + loading();
+  need('chartcat:' + sid, () => api('/api/charts').then((r) => { r.sources.forEach((x) => { CHCAT[x.id] = x; }); }));
   const c = CH[cid];
-  const rows = c.tracks.map((t, i) => `<button class="crow" data-act="play-chart" data-id="${esc(cid)}" data-i="${i}"><span class="crank">${t.rank}</span>${t.image ? `<span class="cart"><img src="${esc(t.image)}" alt="" loading="lazy"></span>` : ''}<span class="cmeta"><b>${esc(t.title)}</b><small>${esc(t.artist || '')}</small></span><span class="cplay">${ic('play')}</span></button>`).join('');
-  return banner(c) + `<div class="crows">${rows}</div><p class="muted" style="font-size:12px;margin:14px 0 0">Chart lists come from public sources and change daily. Songs play from AURA’s library; a few may not be available.</p>`;
+  const nm = (CHCAT[sid] && (CHCAT[sid].charts.find((x) => x.id === id) || {}).name) || 'Chart';
+  const isAlbums = c && c.kind === 'albums';
+  const title = c ? c.title : nm;
+  const head = (() => {
+    const tabs = chartTabs(sid, id).map(([l, tid, on]) => `<button type="button" class="cp-tab ${on ? 'on' : ''}" data-go="chart" data-id="${esc(sid + ':' + tid)}">${esc(l)}</button>`).join('');
+    const acts = c ? `<button class="cp-play" data-act="play-chart" data-id="${esc(cid)}" data-i="0">${ic('play')}Play</button><button class="cp-shuf" data-act="play-chart" data-id="${esc(cid)}" data-i="0" data-shuffle="1">${ic('shuffle')}Shuffle</button>` : '';
+    const tools = `<div class="cp-tools">${tabs ? `<div class="cp-tabs" role="tablist">${tabs}</div>` : ''}${chartPicker(sid, id)}</div>`;
+    if (sid === 'apple') {
+      const imgs = c ? c.tracks.filter((t) => t.image).slice(0, 4).map((t) => t.image) : [];
+      const mosaic = `<div class="cp-mosaic" aria-hidden="true">${[0, 1, 2, 3].map((i) => imgs[i] ? `<img src="${esc(imgs[i])}" alt="" referrerpolicy="no-referrer">` : '<i></i>').join('')}</div>`;
+      const nice = isAlbums ? 'Top 100 Albums' : /videos/.test(id) ? 'Top 100 Music Videos' : 'Top 100 Songs';
+      return `<header class="cp-head">${mosaic}<div class="cp-hd"><div class="cp-eyebrow">${esc(src.name)}</div><h1>${esc(nice)}: ${esc(placeOf({ name: title }))}</h1><p class="cp-sub">Updated daily${c ? ' · ' + c.tracks.length + ' ' + (isAlbums ? 'albums' : /videos/.test(id) ? 'videos' : 'songs') : ''}</p><div class="cp-acts">${acts}</div>${tools}</div></header>`;
+    }
+    if (sid === 'youtube') return `<header class="cp-head"><div class="cp-hd"><div class="cp-eyebrow">${esc(src.name)}</div><h1>Trending: ${esc(placeOf({ name: title }))}</h1><p class="cp-sub">Music videos people are watching right now</p><div class="cp-acts">${acts}</div>${tools}</div></header>`;
+    return `<header class="cp-head"><div class="cp-hd"><div class="cp-eyebrow">${esc(src.name)}</div><h1>Top Songs: ${esc(placeOf({ name: title }))}</h1><p class="cp-sub">${esc((c && c.desc) || '')} · the most streamed songs, updated daily</p><div class="cp-acts">${acts}</div>${tools}</div></header>`;
+  })();
+  const shell = (inner) => `<div class="cp cp-${esc(sid)}">${head}${inner}</div>`;
+  if (n === 'err') return shell(errBox(key, 'this chart'));
+  if (!n || !c) return shell(loading());
+  const rows = c.tracks.map((t, i) => `<button class="cp-row" data-act="play-chart" data-id="${esc(cid)}" data-i="${i}"><span class="cp-n">${t.rank}</span>${cpCover(t)}<span class="cp-t"><b>${esc(t.title)}</b><small>${esc(t.artist || '')}</small></span><span class="cp-go">${ic('play')}</span></button>`).join('');
+  const cols = sid === 'spotify' ? `<div class="cp-cols" aria-hidden="true"><span>#</span><span>Title</span></div>` : '';
+  return shell(`${cols}<div class="cp-list">${rows}</div><p class="muted" style="font-size:12px;margin:14px 0 0">Chart lists come from public sources and change daily. Songs play through AURA; a few may not be available.</p>`);
 };
 const homeFeed = () => (HOME ? HOME.sections : []).filter((s) => !/chart/i.test(s.key + ' ' + (s.title || '')));
 const isChartName = (n) => /\bcharts?\b|^top\s*\d+\b/i.test(String(n || ''));
@@ -763,52 +804,20 @@ act = function (n, el, e) {
 };
 
 
-/* ---------------- JioSaavn account: sign in for Pro quality ---------------- */
-const JKEY = 'aura-jiosaavn-v1';
-let JSA = null;
-try { JSA = JSON.parse(localStorage.getItem(JKEY) || 'null'); } catch (e) {}
-const saveJSA = () => { try { JSA ? localStorage.setItem(JKEY, JSON.stringify(JSA)) : localStorage.removeItem(JKEY); } catch (e) {} };
-const isPro = () => !!(JSA && JSA.pro && (!JSA.until || JSA.until > Date.now()));
-window.AURA_JS_ACCOUNT = () => (JSA && window.AURA_NATIVE ? { session: JSA.session, pro: isPro() } : null); // read by the Android glue
+/* ---------------- streaming quality, song lookup ---------------- */
 const songQuery = (id) => { const t = TR[id]; return t ? (t.title + ' ' + ((t.artistsText || (ARTISTS[t.artist] && ARTISTS[t.artist].name) || ''))).trim() : ''; };
 window.AURA_SONG_QUERY = songQuery;
-const streamSrc = (id) => '/api/stream/' + enc(id) + '?q=' + enc(songQuery(id)) + (JSA && JSA.token ? '&acct=' + enc(JSA.token) : '');
-const JioLogin = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.JioLogin;
-async function jsConnect(cookie) {
-  if (window.AURA_NATIVE) return window.JioSaavn.accountFromSession(cookie);
-  const r = await fetch('/api/account/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: cookie }) });
-  let j = {}; try { j = await r.json(); } catch (_) {}
-  if (!r.ok) throw new Error(j.error || `Sign-in failed (${r.status})`);
-  return j;
-}
-function jsConnected(a) {
-  JSA = { name: a.name, email: a.email, pro: !!a.pro, until: a.until || 0, fields: a.fields || [], token: a.token, session: window.AURA_NATIVE ? a.session : undefined, at: Date.now() };
-  saveJSA(); closeModal(); renderView(true);
-  if (window.JioSaavn && window.JioSaavn.forgetStream && audio.dataset.id) window.JioSaavn.forgetStream(audio.dataset.id);
-  _toast(isPro() ? 'JioSaavn Pro connected. Songs now stream at 320 kbps' : 'Signed in. JioSaavn doesn’t show Pro on this account, so AURA stays at 128 kbps');
-}
-const cleanMsg = (x) => String((x && x.message) || x || 'Sign-in failed').replace(/^JioSaavn:?\s*/i, '');
-// Android app: JioSaavn's own website opens inside the app; after signing in there (phone number + code), the app picks up the sign-in.
-async function jsNativeSignIn() {
-  const P = JioLogin();
-  if (!P) return jsLoginModal('This version of the app can’t open JioSaavn’s sign-in. Install the latest AURA APK.');
-  let r;
-  try { r = await P.open(); } catch (x) { return; } // closed without signing in
-  try { jsConnected(await jsConnect(r.cookie)); }
-  catch (x) { jsLoginModal(cleanMsg(x)); }
-}
-const untilText = (t) => t ? ` until ${new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+// What the listener can pick. AURA asks the library for that quality; if a song has no such file, the normal quality plays.
+const QUALITIES = [['48', 'Data saver', '48 kbps'], ['96', 'Low', '96 kbps'], ['128', 'Normal', '128 kbps'], ['160', 'High', '160 kbps'], ['320', 'Highest', '320 kbps']];
+const qualityOf = () => (QUALITIES.some((q) => q[0] === String(S.settings.quality)) ? String(S.settings.quality) : '128');
+window.AURA_QUALITY = qualityOf();
+const streamSrc = (id) => '/api/stream/' + enc(id) + '?q=' + enc(songQuery(id)) + '&br=' + qualityOf();
 qualityRow = function () {
-  const pro = isPro();
-  return `<div class="acct-row"><span><b>Streaming quality</b><small>${pro ? 'Highest quality, from your JioSaavn Pro account' : 'Standard quality'}</small></span><span class="qpill">${pro ? '320 kbps' : '128 kbps'}</span></div>`;
+  const q = qualityOf(), cur = QUALITIES.find((x) => x[0] === q);
+  return `<div class="acct-row" style="flex-wrap:wrap"><span style="flex:1;min-width:220px"><b>Streaming quality</b><small>Ask for ${esc(cur[1].toLowerCase())} quality (${cur[2]}). If a song doesn’t come in that quality, AURA plays its normal one. YouTube and Audius songs choose their own quality.</small></span>
+    <span class="seg" role="group" aria-label="Streaming quality" style="flex-wrap:wrap">${QUALITIES.map((x) => `<button type="button" class="${x[0] === q ? 'on' : ''}" data-act="quality" data-k="${x[0]}" title="${x[2]}">${x[1]}<small style="display:block;font-size:10px;opacity:.7">${x[2]}</small></button>`).join('')}</span></div>`;
 };
-extraAccountRows = function () {
-  if (!JSA) return `<div class="acct-row"><span><b>JioSaavn account</b><small>Sign in with JioSaavn Pro to stream at 320 kbps. Without Pro, AURA stays at 128 kbps.</small></span><button class="btn" data-act="js-connect">Sign In</button></div>`;
-  const pro = isPro();
-  const note = pro ? `Pro${untilText(JSA.until)} · 320 kbps` : (JSA.pro ? 'Pro has ended · 128 kbps' : 'Signed in, but JioSaavn doesn’t show Pro on this account · 128 kbps');
-  const detail = !pro && JSA.fields && JSA.fields.length ? `<details><summary class="muted" style="font-size:12px;cursor:pointer">Have Pro? Show what JioSaavn returned</summary><p class="js-fields">${esc(JSA.fields.join(', '))}</p></details>` : '';
-  return `<div class="acct-row"><span><b>JioSaavn account</b><small${pro || JSA.pro ? '' : ' class="warn"'}>${esc(JSA.name || '')}${JSA.name ? ' · ' : ''}${note}</small>${detail}</span><button class="btn" data-act="js-signout">Sign Out</button></div>`;
-};
+extraAccountRows = function () { return ''; };
 let SRCS = null, BUILD = '';
 function sourcesRow() {
   if (!SRCS) { api('/api/sources').then((r) => { SRCS = r.sources || []; api('/api/health').then((h) => { BUILD = h.build || ''; if (cur().name === 'profile') renderView(true); }).catch(() => {}); if (cur().name === 'profile') renderView(true); }).catch(() => { SRCS = []; }); return ''; }
@@ -817,41 +826,14 @@ function sourcesRow() {
 }
 const _extraRows = extraAccountRows;
 extraAccountRows = function () { return sourcesRow() + _extraRows(); };
-function jsLoginModal(err = '') {
-  if (window.AURA_NATIVE) {
-    openModal(mhead('Sign In to JioSaavn') + `<div class="modal-body">
-      <p class="muted" style="margin-top:0">JioSaavn’s own sign-in page opens inside AURA. Sign in there with your phone number and code (or any way JioSaavn offers), then tap <b>Done</b>. With JioSaavn Pro, songs stream at 320 kbps; otherwise at 128 kbps.</p>
-      <p class="auth-err" role="alert">${esc(err)}</p></div>
-      <div class="modal-foot"><button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary" data-act="js-native-open">Open JioSaavn</button></div>`);
-    return;
-  }
-  openModal(mhead('Sign In to JioSaavn') + `<form id="js-login-form" novalidate><div class="modal-body">
-    <p class="muted" style="margin-top:0">Browsers don’t let one website read another website’s sign-in, so on the web this takes one copy and paste. You only do it once per browser. (In the Android app it’s automatic.)</p>
-    <ol class="js-steps">
-      <li><a href="https://www.jiosaavn.com/" target="_blank" rel="noopener">Open jiosaavn.com</a> on a computer and sign in with your phone number and code.</li>
-      <li>Press <b>F12</b>, open the <b>Network</b> tab and reload the page.</li>
-      <li>Click the first request (<code>www.jiosaavn.com</code>), find <b>Request Headers → cookie</b>, right-click it and choose <b>Copy value</b>.</li>
-      <li>Paste it below.</li>
-    </ol>
-    <label class="field"><span>JioSaavn cookie</span><textarea id="js-cookie" rows="3" spellcheck="false" autocomplete="off" placeholder="Paste here"></textarea><small>This is your JioSaavn sign-in. Treat it like a password: paste it only into your own AURA. It’s kept sealed in this browser.</small></label>
-    <p class="auth-err" role="alert">${esc(err)}</p>
-  </div><div class="modal-foot"><button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary" type="submit">Connect</button></div></form>`);
-}
-document.addEventListener('submit', async (e) => {
-  if (e.target.id !== 'js-login-form') return;
-  e.preventDefault(); e.stopImmediatePropagation();
-  const btn = e.target.querySelector('button[type=submit]'), errEl = e.target.querySelector('.auth-err');
-  const cookie = document.getElementById('js-cookie').value.trim();
-  if (!cookie) { errEl.textContent = 'Paste the cookie you copied from jiosaavn.com.'; return; }
-  btn.disabled = true; btn.textContent = 'Connecting…'; errEl.textContent = '';
-  try { jsConnected(await jsConnect(cookie)); }
-  catch (x) { btn.disabled = false; btn.textContent = 'Connect'; errEl.textContent = cleanMsg(x); }
-}, true);
 const _act3 = act;
 act = function (n, el, e) {
-  if (n === 'js-connect') return jsLoginModal();
-  if (n === 'js-native-open') { closeModal(); return jsNativeSignIn(); }
-  if (n === 'js-signout') { JSA = null; saveJSA(); if (JioLogin() && JioLogin().signOut) JioLogin().signOut().catch(() => {}); renderView(true); _toast('Signed out of JioSaavn. Songs stream at 128 kbps'); return; }
+  if (n === 'quality') {
+    S.settings.quality = el.dataset.k; window.AURA_QUALITY = qualityOf(); persist();
+    if (window.JioSaavn && window.JioSaavn.forgetStream) Object.keys(TR).forEach((id) => window.JioSaavn.forgetStream(id));
+    renderView(true); _toast('Streaming quality: ' + QUALITIES.find((x) => x[0] === qualityOf())[1] + '. Applies from the next song');
+    return;
+  }
   return _act3(n, el, e);
 };
 

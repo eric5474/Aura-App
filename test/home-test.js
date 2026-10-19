@@ -40,30 +40,30 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
     ok(n === expectCharts, `${name} lists all its charts (${n})`);
     if (name === 'Spotify Charts') await pg.screenshot({ path: out + '/h2-spotify-charts.png' });
     await pg.click('.cchart:first-child');
-    await pg.waitForSelector('.crow');
-    const rows = await ev(() => [...document.querySelectorAll('.crow')].map((r) => r.querySelector('b').textContent + ' / ' + r.querySelector('small').textContent));
+    await pg.waitForSelector('.cp-row');
+    const rows = await ev(() => [...document.querySelectorAll('.cp-row')].map((r) => r.querySelector('.cp-t b').textContent + ' / ' + r.querySelector('.cp-t small').textContent));
     ok(rows.length === 8 && /^Mock Song 4 & Friends \/ Pritam$/.test(rows[0]), `${name}: first chart shows ranked songs (${rows[0]})`);
     if (name === 'YouTube Music Charts') ok(!rows.some((r) => /Gameplay/.test(r)) && !rows.some((r) => /Official/.test(r)), 'YouTube: Music table used, video suffixes cleaned');
     if (name === 'Spotify Charts') {
       await pg.screenshot({ path: out + '/h3-chart.png' });
-      await pg.click('.crow:nth-child(2)'); await pg.waitForTimeout(2200);
+      await pg.click('.cp-row:nth-child(2)'); await pg.waitForTimeout(2200);
       const p = await ev(() => ({ t: curTrack() && curTrack().title, playing: S.playing, pos: S.pos, q: S.queue.map((id) => TR[id].title) }));
       ok(/Mock Song 7/.test(p.t) && p.playing && p.pos > 0.5, 'tapping a chart song plays it from the library (' + p.t + ')');
       ok(p.q.length === 6 && !p.q.some((t) => /Nonexistent/.test(t)), 'queue skips songs no source has (' + p.q.length + ' queued)');
       const ids = await ev(() => S.queue.slice());
       ok(ids.some((i) => /^au_/.test(i)) && ids.some((i) => /^jm_/.test(i)), 'songs the main library lacks were found on the other sources');
-      await pg.click('.crow:nth-child(3)');
+      await pg.click('.cp-row:nth-child(3)');
       await pg.waitForFunction(() => /isn’t in AURA’s library/.test(document.getElementById('toast').textContent), null, { timeout: 5000 });
       ok(true, 'a song the library lacks says so');
     }
   }
   // a song that only the Audius source has streams through the backend
   await ev(() => go('home', undefined, true)); await pg.waitForSelector('.csrcs');
-  await pg.click('.csrc:has-text("Spotify Charts")'); await pg.waitForSelector('.cchart'); await pg.click('.cchart:first-child'); await pg.waitForSelector('.crow');
-  await pg.click('.crow:nth-child(7)'); await pg.waitForTimeout(2500);
+  await pg.click('.csrc:has-text("Spotify Charts")'); await pg.waitForSelector('.cchart'); await pg.click('.cchart:first-child'); await pg.waitForSelector('.cp-row');
+  await pg.click('.cp-row:nth-child(7)'); await pg.waitForTimeout(2500);
   const au = await ev(() => ({ id: curId(), playing: S.playing, pos: S.pos }));
   ok(/^au_/.test(au.id) && au.playing && au.pos > 0.5, 'an Audius-only song streams (' + au.id + ' at ' + au.pos.toFixed(1) + 's)');
-  await pg.click('.crow:nth-child(8)'); await pg.waitForTimeout(2500);
+  await pg.click('.cp-row:nth-child(8)'); await pg.waitForTimeout(2500);
   const jm = await ev(() => ({ id: curId(), playing: S.playing, pos: S.pos }));
   ok(/^jm_/.test(jm.id) && jm.playing && jm.pos > 0.5, 'a Jamendo-only song streams (' + jm.id + ')');
   ok(await ev(async () => { const r = await (await fetch('/api/sources/check?q=indie dream')).json(); return r.audius.ok && r.jamendo.ok === false || r.audius.ok; }), 'source check reports Audius working');
@@ -77,8 +77,8 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
   ok(await ev(() => document.querySelector('#sidebar [data-go="charts"][data-id="apple"]').classList.contains('active') && !document.querySelector('#sidebar [data-go="charts"][data-id="spotify"]').classList.contains('active')), 'sidebar highlights the open category');
   await pg.screenshot({ path: out + '/h4-apple-category.png' });
   await pg.click('.cchart:has-text("Top Albums")');
-  await pg.waitForSelector('.crow');
-  await pg.click('.crow:nth-child(1)'); await pg.waitForTimeout(2200);
+  await pg.waitForSelector('.cp-row');
+  await pg.click('.cp-row:nth-child(1)'); await pg.waitForTimeout(2200);
   const alb = await ev(() => ({ t: curTrack() && AL[curTrack().album] && AL[curTrack().album].title, playing: S.playing, n: S.queue.length }));
   ok(/Mock Album 2/.test(alb.t) && alb.playing && alb.n === 6, 'an album chart plays the whole album (' + alb.t + ', ' + alb.n + ' songs)');
   await ev(() => go('profile', undefined, true)); await pg.waitForSelector('text=Music sources');

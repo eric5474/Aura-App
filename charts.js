@@ -115,7 +115,7 @@ function parseYouTube(html) {
     const key = (c.artist + '|' + c.title).toLowerCase();
     if (!c.title || seen.has(key)) continue;
     seen.add(key);
-    out.push({ title: c.title, artist: c.artist, id: r.id });
+    out.push({ title: c.title, artist: c.artist, id: r.id, image: `https://i.ytimg.com/vi/${r.id}/mqdefault.jpg` });
     if (out.length >= LIMIT) break;
   }
   return out;
