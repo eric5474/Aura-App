@@ -14,6 +14,7 @@ const { Readable } = require('stream');
 const js = require('./jiosaavn');
 const charts = require('./charts');
 const sources = require('./sources');
+charts.setYouTube({ official: (cc) => sources.youtubeChart(cc), song: (id, t, a, img) => sources.ytSong(id, t, a, img) });
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -79,20 +80,26 @@ const routes = [
       const h = {};
       for (const k of ['server', 'x-cache', 'x-amz-cf-pop', 'x-akamai-reference', 'via', 'content-type']) { const v = r.headers.get(k); if (v) h[k] = v; }
       report.audio_headers = h;
-      if (!r.ok) {
+      if (!r.ok && report.with_site_headers_status >= 400) {
         const text = (await r.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
         report.audio_body = text;
         report.likely = /country|region|geo|location/i.test(text) ? 'blocked in this country/region'
           : /expired|signature|token/i.test(text) ? 'stream link rejected (signature/expiry)'
           : 'refused by the audio server; see audio_body';
       }
-      return { ...report, step: 'audio', ok: r.ok };
+      // AURA always sends the site headers, so that's the test that matters; the bare request is only for comparison.
+      const works = report.with_site_headers_status < 400;
+      report.audio_status_without_site_headers = r.status;
+      delete report.audio_status;
+      report.verdict = works ? 'OK: JioSaavn audio works through AURA (a bare request is refused by design, AURA adds the headers)' : 'Refused even with the site headers; see audio_body';
+      return { ...report, step: 'audio', ok: works };
     } catch (e) { return { ...report, ok: false, detail: e.message }; }
   }],
   [/^\/api\/charts$/, async () => ({ sources: charts.catalogue() })],
   [/^\/api\/charts\/([a-z]+)\/([a-z0-9_]+)$/, (m) => charts.chart(m[1], m[2])],
   [/^\/api\/home$/, () => js.home()],
   [/^\/api\/search$/, (m, q) => sources.search(q.get('q'), q.get('type') || 'all', Number(q.get('page')) || 1)],
+  [/^\/api\/youtube\/resolve$/, async (m, q) => ({ video: await sources.youtubeResolve(String(q.get('q') || '').slice(0, 200)) })],
   [/^\/api\/sources$/, async () => ({ sources: sources.list() })],
   [/^\/api\/sources\/check$/, (m, q) => sources.check(q.get('q') || 'love')],
   [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],
