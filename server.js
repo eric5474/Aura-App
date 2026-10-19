@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
 const js = require('./jiosaavn');
+const charts = require('./charts');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -123,6 +124,8 @@ const routes = [
       return { ...report, step: 'audio', ok: r.ok };
     } catch (e) { return { ...report, ok: false, detail: e.message }; }
   }],
+  [/^\/api\/charts$/, async () => ({ sources: charts.catalogue() })],
+  [/^\/api\/charts\/([a-z]+)\/([a-z0-9_]+)$/, (m) => charts.chart(m[1], m[2])],
   [/^\/api\/home$/, () => js.home()],
   [/^\/api\/search$/, (m, q) => js.search(q.get('q'), q.get('type') || 'all', Number(q.get('page')) || 1)],
   [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],

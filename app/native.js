@@ -5,11 +5,14 @@
 (function () {
   'use strict';
   const js = window.JioSaavn;
+  const ch = window.AuraCharts;
   window.AURA_NATIVE = true;
 
   const num = (v, d) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
   const routes = [
     [/^\/api\/health$/, async () => ({ ok: true, source: 'jiosaavn', native: true })],
+    [/^\/api\/charts$/, async () => ({ sources: ch.catalogue() })],
+    [/^\/api\/charts\/([a-z]+)\/([a-z0-9_]+)$/, (m) => ch.chart(m[1], m[2])],
     [/^\/api\/home$/, () => js.home()],
     [/^\/api\/search$/, (m, q) => js.search(q.get('q'), q.get('type') || 'all', num(q.get('page'), 1))],
     [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],

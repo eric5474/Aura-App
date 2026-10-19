@@ -432,14 +432,91 @@ const heroPl = (p, label) => `<article class="hero-card" data-go="playlist" data
 const heroLive = (label) => { const { show } = liveShow(); return `<article class="hero-card" data-act="play-live" tabindex="0"><div class="hero-label">${label}</div><div class="hero-art">${liveArt('AURA One · Live', esc(show[0]))}</div><div class="hero-cap"><b>${esc(show[0])}</b><span>${esc(show[1])} · Listen live</span></div></article>`; };
 const stationTiles = () => feedStations().filter((c) => c.station.kind !== 'artist').map((c) => stationCard(c));
 
+/* ---------------- charts: Spotify, Apple Music and YouTube Music ---------------- */
+const CH = {};      // loaded charts, by 'source:id'
+const CHCAT = {};   // each source's list of charts
+const RES = {};     // chart song -> song in AURA's library (id), or 0 when it isn't there
+const CHART_SOURCES = [
+  { id: 'spotify', name: 'Spotify Charts', blurb: 'The most streamed songs, by country', a: 148, b: 190 },
+  { id: 'apple', name: 'Apple Music Charts', blurb: 'The most played songs, by country', a: 350, b: 20 },
+  { id: 'youtube', name: 'YouTube Music Charts', blurb: 'Music videos trending right now', a: 8, b: 40 },
+];
+const chartSrc = (id) => CHART_SOURCES.find((x) => x.id === id);
+const chartSrcTile = (x) => `<button class="csrc" style="--a:${x.a};--b:${x.b}" data-go="charts" data-id="${x.id}"><b>${esc(x.name)}</b><span>${esc(x.blurb)} ${ic('fwd')}</span></button>`;
+const chartsSection = () => `<section><div class="shelf-head"><h2>Charts</h2><span class="sub">What the world is listening to</span></div><div class="csrcs">${CHART_SOURCES.map(chartSrcTile).join('')}</div></section>`;
+const normT = (v) => String(v || '').toLowerCase().replace(/&amp;/g, ' ').replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/\b(feat|ft|featuring|with|prod|remix|version|from|official|video|audio|lyrics?)\b.*$/i, ' ')
+  .replace(/[^a-z0-9À-￿]+/g, ' ').trim();
+const toks = (v) => new Set(normT(v).split(' ').filter((w) => w.length > 1 || /\d/.test(w))); // keep single digits: "7 rings" is not "3 rings"
+const overlap = (a, b) => { if (!a.size || !b.size) return 0; let n = 0; a.forEach((w) => { if (b.has(w)) n++; }); return n / Math.min(a.size, b.size); };
+// Find a chart song in AURA's library: search by "title artist" and accept a result whose title (and artist) match.
+async function resolveChartSong(ct) {
+  const key = normT(ct.title) + '|' + normT(ct.artist);
+  if (key in RES) return RES[key];
+  let found = 0;
+  try {
+    const q = `${normT(ct.title)} ${normT(ct.artist).split(' ').slice(0, 3).join(' ')}`.trim();
+    const r = await api('/api/search?type=songs&q=' + enc(q));
+    const tt = toks(ct.title), at = toks(ct.artist);
+    let best = null, bestScore = 0;
+    for (const sg of r.songs || []) {
+      const ts = overlap(tt, toks(sg.title));
+      const as = at.size ? overlap(at, toks((sg.artists || []).map((x) => x.name).join(' ') + ' ' + (sg.subtitle || ''))) : 1;
+      const sc = ts * 2 + as;
+      if (ts >= 0.6 && as > 0 && sc > bestScore) { best = sg; bestScore = sc; }
+    }
+    if (best) found = ingSong(best);
+  } catch (e) { return 0; }
+  return (RES[key] = found || 0);
+}
+let chartRun = 0;
+async function playChart(cid, start, sh) {
+  const c = CH[cid]; if (!c) return;
+  const run = ++chartRun;
+  const first = c.tracks[start] || c.tracks[0];
+  toast(`Finding “${first.title}”…`);
+  const win = c.tracks.slice(start, start + 20);
+  const ids = (await Promise.all(win.map(resolveChartSong))).filter(Boolean);
+  if (run !== chartRun) return;
+  if (!ids.length) return toast(`“${first.title}” isn’t in AURA’s library yet`);
+  if (!ids.includes(RES[normT(first.title) + '|' + normT(first.artist)])) toast(`“${first.title}” isn’t in AURA’s library, so the next song is playing`);
+  S.shuffle = !!sh; playList([...new Set(ids)], 0, c.title, sh ? { shuffle: true } : {});
+}
+VIEWS.charts = function (sid) {
+  const src = chartSrc(sid) || CHART_SOURCES[0];
+  const banner = `<div class="banner-art" style="--a:${src.a};--b:${src.b};min-height:170px"><div><div class="eyebrow">Charts</div><h1>${esc(src.name)}</h1></div></div>`;
+  const key = 'chartcat:' + src.id;
+  const n = need(key, () => api('/api/charts').then((r) => { r.sources.forEach((x) => { CHCAT[x.id] = x; }); }));
+  if (n === 'err') return banner + errBox(key, 'the charts');
+  if (!n || !CHCAT[src.id]) return banner + loading();
+  const cat = CHCAT[src.id];
+  const pill = (c) => `<button class="cchart" style="--a:${(src.a + hash(c.id) % 40) % 360};--b:${src.b}" data-go="chart" data-id="${esc(src.id + ':' + c.id)}"><b>${esc(c.name)}</b><span>${esc(c.desc || '')}</span></button>`;
+  return banner + `<p class="muted" style="margin:-8px 0 16px">${esc(cat.blurb)} Tap a chart, then tap a song to play it from AURA’s library.</p><div class="cchart-grid">${cat.charts.map(pill).join('')}</div>`;
+};
+VIEWS.chart = function (cid) {
+  const [sid, id] = String(cid).split(':');
+  const src = chartSrc(sid) || CHART_SOURCES[0];
+  const key = 'chart:' + cid;
+  const n = need(key, () => api(`/api/charts/${enc(sid)}/${enc(id)}`).then((r) => { CH[cid] = r; }));
+  const nm = (CHCAT[sid] && (CHCAT[sid].charts.find((x) => x.id === id) || {}).name) || 'Chart';
+  const banner = (c) => `<div class="banner-art" style="--a:${src.a};--b:${src.b};min-height:190px"><div><div class="eyebrow">${esc(src.name)}${c && c.desc ? ' · ' + esc(c.desc) : ''}</div><h1>${esc(c ? c.title : nm)}</h1>${c ? `<div class="dbtns"><button class="btn primary" data-act="play-chart" data-id="${esc(cid)}" data-i="0">${ic('play')}Play</button><button class="btn" data-act="play-chart" data-id="${esc(cid)}" data-i="0" data-shuffle="1">${ic('shuffle')}Shuffle</button></div>` : ''}</div></div>`;
+  if (n === 'err') return banner() + errBox(key, 'this chart');
+  if (!n || !CH[cid]) return banner() + loading();
+  const c = CH[cid];
+  const rows = c.tracks.map((t, i) => `<button class="crow" data-act="play-chart" data-id="${esc(cid)}" data-i="${i}"><span class="crank">${t.rank}</span>${t.image ? `<span class="cart"><img src="${esc(t.image)}" alt="" loading="lazy"></span>` : ''}<span class="cmeta"><b>${esc(t.title)}</b><small>${esc(t.artist || '')}</small></span><span class="cplay">${ic('play')}</span></button>`).join('');
+  return banner(c) + `<div class="crows">${rows}</div><p class="muted" style="font-size:12px;margin:14px 0 0">Chart lists come from public sources and change daily. Songs play from AURA’s library; a few may not be available.</p>`;
+};
+const homeFeed = () => (HOME ? HOME.sections : []).filter((s) => !/chart/i.test(s.key + ' ' + (s.title || '')));
+const isChartName = (n) => /\bcharts?\b|^top\s*\d+\b/i.test(String(n || ''));
+const hFeedRefs = (type) => uniq(homeFeed().flatMap((s) => s.items).filter((c) => c.type === type && !(c.type === 'playlist' && isChartName(c.title))).map((c) => c.ref));
 VIEWS.home = function () {
   const wait = homeWait('Home'); if (wait) return wait;
-  const mx = mixes(), albums = feedRefs('album'), pls = feedRefs('playlist').map(plById).filter(Boolean);
+  const mx = mixes(), albums = hFeedRefs('album'), pls = hFeedRefs('playlist').map(plById).filter(Boolean);
   const loved = Object.keys(S.love).filter((k) => S.love[k] === 1 && TR[k]).slice(0, 8);
   const picks = [mx[0] ? heroPl(mx[0], 'Made for you') : pls[0] ? heroPl(pls[0], 'Playlist') : '', albums[0] ? heroAlbum(albums[0], 'New release') : '', heroLive('Live now')].join('');
   return head('Home') + tagline +
     `<section><div class="shelf-head" style="margin-top:8px"><h2>Top Picks for You</h2></div><div class="heroes">${picks}</div></section>` +
     shelf('Recently Played', S.recent.map(recentTile).filter(Boolean)) +
+    chartsSection() +
     shelf('Made for You', mx.map((m) => plTile(m, m.desc)), 'madeforyou') +
     shelf('New Releases', albums.slice(0, 12).map((id) => albumTile(id)), 'new') +
     (loved.length ? `<section><div class="shelf-head"><h2>Songs You Love</h2></div><div class="top-songs">${trackList(loved, 'Songs You Love', { art: 1, noAlb: 1 })}</div></section>` : '') +
@@ -585,6 +662,7 @@ act = function (n, el, e) {
   const id = el.dataset.id, sh = !!el.dataset.shuffle;
   switch (n) {
     case 'retry': { const k = el.dataset.k; delete ERR[k]; LOADED.delete(k); renderView(true); return; }
+    case 'play-chart': return playChart(el.dataset.id, Number(el.dataset.i) || 0, !!sh);
     case 'play-rstation': return playFeatured(el.dataset.name, el.dataset.lang, el.dataset.kind, el.dataset.img);
     case 'play-song': { const t = TR[id]; if (!t) return; return playList([id], 0, t.title); }
     case 'play-album': return ensure.album(id).then(() => { const a = AL[id]; playList(a.tracks, 0, a.title, { shuffle: sh, recent: ['album', id] }); }).catch((x) => toast(x.message));
