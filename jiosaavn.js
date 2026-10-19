@@ -5,8 +5,7 @@
  * responses into AURA's simple song / album / artist / playlist shapes.
  *
  * Streaming uses JioSaavn's own `song.generateAuthToken` endpoint (the one the web
- * player calls) at a free-tier bitrate. 320 kbps is only requested for a signed-in
- * account that JioSaavn itself reports as Pro. No decryption, no downloads.
+ * player calls); the listener picks the quality. No decryption, no downloads.
  */
 
 // Runs in Node (server.js) and inside the Android app (bundled by scripts/build-app.js).
@@ -47,7 +46,7 @@ async function call(fn, params = {}, opt = {}) {
     headers: {
       'User-Agent': UA,
       Accept: 'application/json, text/plain, */*',
-      Cookie: `L=${encodeURIComponent(LANGS)}; DL=english; gdpr_acceptance=true${opt.session ? '; ' + opt.session : ''}`,
+      Cookie: `L=${encodeURIComponent(LANGS)}; DL=english; gdpr_acceptance=true`,
     },
     signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined,
   };
@@ -63,10 +62,6 @@ async function call(fn, params = {}, opt = {}) {
   catch (e) { throw new Error(`Couldn't reach JioSaavn (${e.cause?.code || e.name})`); }
   if (!res.ok) throw new Error(`JioSaavn ${fn} failed with HTTP ${res.status}`);
   const data = parseJSON(await res.text());
-  if (opt.cookies) { // hand back the session cookies a sign-in sets
-    const raw = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [res.headers.get('set-cookie')].filter(Boolean);
-    opt.cookies.push(...raw.flatMap((c) => String(c).split(/,(?=\s*[A-Za-z0-9_.-]+=)/)).map((c) => c.split(';')[0].trim()).filter((c) => /^[^=]+=./.test(c)));
-  }
   if (data && data.error && !opt.allowError) {
     const msg = typeof data.error === 'string' ? data.error : (data.error.msg || JSON.stringify(data.error));
     throw new Error(`JioSaavn: ${msg}`);
@@ -327,24 +322,22 @@ async function featuredRadio(name, language = '', kind = 'featured', n = 20) {
 /* ---------------- streaming ---------------- */
 const streamLinks = new Map(); // id -> { url, exp }
 
-async function streamUrl(id, acct) {
-  const pro = !!(acct && acct.pro && acct.session);
-  if (pro) { // a confirmed Pro account: ask for 320 kbps with that account, and use the normal link if that fails
-    const key = id + '@320';
-    const hit = streamLinks.get(key);
-    if (hit && hit.exp > Date.now()) return hit.url;
-    try {
-      if (!mediaRef.has(id)) await songs([id]);
-      const ref = mediaRef.get(id);
-      const tok = ref && await call('song.generateAuthToken', { url: ref, bitrate: '320' }, { v4: false, fresh: true, allowError: true, session: acct.session });
-      if (tok && tok.auth_url) { streamLinks.set(key, { url: tok.auth_url, exp: Date.now() + 4 * 60 * 1000 }); return tok.auth_url; }
-    } catch (_) {}
-  }
-  const hit = streamLinks.get(id);
+// opts.bitrate: the quality the listener picked (48 / 96 / 128 / 160 / 320). AURA asks for it; if the library
+// has no such file for the song, the normal quality is played instead.
+async function streamUrl(id, opts) {
+  const want = String((opts && opts.bitrate) || BITRATE);
+  const key = id + '@' + want;
+  const hit = streamLinks.get(key);
   if (hit && hit.exp > Date.now()) return hit.url;
   if (!mediaRef.has(id)) await songs([id]);
   const ref = mediaRef.get(id);
   if (!ref) throw new Error('This song isn’t available to stream');
+  if (want !== BITRATE) {
+    try {
+      const t = await call('song.generateAuthToken', { url: ref, bitrate: want }, { post: true, v4: false, fresh: true, allowError: true });
+      if (t && t.auth_url) { streamLinks.set(key, { url: t.auth_url, exp: Date.now() + 4 * 60 * 1000 }); return t.auth_url; }
+    } catch (_) { /* fall back to the normal quality below */ }
+  }
   // Ask for a stream link the way the web player does, with a few fallbacks.
   const tries = [{ post: true, v4: false }, { v4: false }, { v4: true }, { v4: false, ctx: 'android' }];
   let tok = null, lastErr = null;
@@ -355,79 +348,11 @@ async function streamUrl(id, acct) {
     } catch (e) { lastErr = e; }
   }
   if (!tok || !tok.auth_url) throw lastErr || new Error('This song isn’t available to stream right now');
-  streamLinks.set(id, { url: tok.auth_url, exp: Date.now() + 4 * 60 * 1000 });
+  streamLinks.set(key, { url: tok.auth_url, exp: Date.now() + 4 * 60 * 1000 });
   return tok.auth_url;
 }
-const forgetStream = (id) => { streamLinks.delete(id); streamLinks.delete(id + '@320'); };
+const forgetStream = (id) => { for (const k of [...streamLinks.keys()]) if (k === id || k.startsWith(id + '@')) streamLinks.delete(k); };
 
-/* ---------------- JioSaavn account (sign-in for Pro quality) ---------------- */
-// Pro is only ever taken from what JioSaavn returns for the signed-in account. Anything unclear counts as not Pro.
-const PRO_KEY = /^(pro|is_?pro|pro_?status|prstatus|pr_?status|is_?premium|premium|subscription_?status|sub_?status)$/i;
-const END_KEY = /(expir|valid_?(till|until|upto)|end_?(date|time)|pro_?until|renew)/i;
-function toTime(v) {
-  if (v == null || v === '') return 0;
-  if (/^\d{9,13}$/.test(String(v))) { const n = Number(v); return n < 1e12 ? n * 1000 : n; }
-  const t = Date.parse(v); return Number.isFinite(t) ? t : 0;
-}
-function proFrom(data) {
-  let pro = false, until = 0;
-  const keys = new Set();
-  (function walk(o, depth) {
-    if (!o || typeof o !== 'object' || depth > 5) return;
-    for (const [k, v] of Object.entries(o)) {
-      keys.add(k);
-      if (PRO_KEY.test(k)) {
-        if (v === true || v === 1 || /^(1|true|yes|active|pro|premium|subscribed)$/i.test(String(v))) pro = true;
-        else if (v && typeof v === 'object') { for (const [k2, v2] of Object.entries(v)) if (END_KEY.test(k2)) { const t = toTime(v2); if (t > Date.now()) { pro = true; until = Math.max(until, t); } } }
-      }
-      if (END_KEY.test(k) && typeof v !== 'object') { const t = toTime(v); if (t) until = Math.max(until, t); }
-      if (v && typeof v === 'object') walk(v, depth + 1);
-    }
-  })(data, 0);
-  if (until && until < Date.now()) pro = false; // expired subscription
-  return { pro, until: until || 0, fields: [...keys].filter((k) => !/pass|token|cookie|session|secret|key/i.test(k)).slice(0, 60) };
-}
-function findStr(o, re) {
-  let out = '';
-  (function walk(x, d) { if (out || !x || typeof x !== 'object' || d > 5) return; for (const [k, v] of Object.entries(x)) { if (out) return; if (re.test(k) && typeof v === 'string' && v.trim()) out = v.trim(); else if (v && typeof v === 'object') walk(v, d + 1); } })(o, 0);
-  return out;
-}
-// The user signs in on jiosaavn.com themselves (phone number + code, or any other way JioSaavn offers),
-// then pastes that browser's sign-in cookie here. AURA never sees a password.
-function cleanSession(raw) {
-  let v = String(raw || '').trim().replace(/^cookie\s*:\s*/i, '').replace(/[\r\n]+/g, ' ');
-  return v.split(';').map((x) => x.trim()).filter((x) => /^[A-Za-z0-9_.\-]+=[^;]*$/.test(x)).join('; ');
-}
-// Find the signed-in user's own record in a response (so promos or other people's data can't count as Pro).
-function userRecord(d) {
-  let best = null;
-  (function walk(o, depth) {
-    if (best || !o || typeof o !== 'object' || depth > 6) return;
-    const k = Object.keys(o);
-    if (k.some((x) => /^(uid|user_?id)$/i.test(x)) && k.some((x) => /^(username|email|phone(_?number)?|firstname|first_name|name)$/i.test(x))) { best = o; return; }
-    for (const v of Object.values(o)) walk(v, depth + 1);
-  })(d, 0);
-  return best;
-}
-async function accountFromSession(raw) {
-  const session = cleanSession(raw);
-  if (!session) throw new Error('Paste the cookie value you copied from jiosaavn.com');
-  let rec = null;
-  for (const t of [{}, { ctx: 'android' }]) {
-    try { rec = userRecord(await call('webapi.getLaunchData', {}, { ...t, fresh: true, session })); } catch (_) {}
-    if (rec) break;
-  }
-  if (!rec) throw new Error('JioSaavn didn’t recognise this sign-in. Sign in on jiosaavn.com again and copy a fresh cookie');
-  const p = proFrom(rec);
-  const phone = findStr(rec, /^phone(_?number)?$/i);
-  return {
-    name: findStr(rec, /^(firstname|first_name)$/i) || findStr(rec, /^(name|fullname|full_name)$/i) || (phone ? '…' + phone.slice(-4) : 'JioSaavn user'),
-    email: findStr(rec, /^email$/i),
-    pro: p.pro, until: p.until, fields: p.fields,
-    session,
-  };
-}
-
-const api = { accountFromSession, cleanSession, proFrom, home, search, songs, album, playlist, artist, lyrics, songRadio, featuredRadio, streamUrl, forgetStream, UA, BASE };
+const api = { home, search, songs, album, playlist, artist, lyrics, songRadio, featuredRadio, streamUrl, forgetStream, UA, BASE };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 else globalThis.JioSaavn = api;

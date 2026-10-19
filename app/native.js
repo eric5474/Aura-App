@@ -1,6 +1,6 @@
 /* AURA Android app glue.
    Bundled into www/remote.js by scripts/build-app.js, between the JioSaavn client and the live-mode adapter.
-   In the app there is no server: the phone calls JioSaavn itself (Capacitor's native HTTP gets around the
+   In the app there is no server: the phone calls the music library itself (Capacitor's native HTTP gets around the
    browser's cross-site limits) and plays JioSaavn's audio links directly. */
 (function () {
   'use strict';
@@ -38,15 +38,13 @@
 
   // Audio links: the app is served over https, so ask for JioSaavn's CDN over https too.
   window.AURA_STREAM_URL = async function (id) {
-    const acct = window.AURA_JS_ACCOUNT ? window.AURA_JS_ACCOUNT() : null; // a JioSaavn Pro sign-in, if any
-    const url = await src.streamUrl(id, acct);
+    const url = await src.streamUrl(id, { bitrate: window.AURA_QUALITY || '' }); // the quality picked on the Profile screen
     return url.replace(/^http:\/\/([a-z0-9.-]*saavncdn\.com)/i, 'https://$1');
   };
 
   // The same song from another source, when this copy won't play.
   window.AURA_STREAM_ALT = async function (id, q) {
-    const acct = window.AURA_JS_ACCOUNT ? window.AURA_JS_ACCOUNT() : null;
-    const alt = await src.alternate(q, id, acct);
+    const alt = await src.alternate(q, id, { bitrate: window.AURA_QUALITY || '' });
     return alt ? alt.url.replace(/^http:\/\/([a-z0-9.-]*saavncdn\.com)/i, 'https://$1') : null;
   };
 

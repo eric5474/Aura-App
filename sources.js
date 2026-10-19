@@ -113,16 +113,16 @@ async function search(q, type = 'all', page = 1) {
   return out;
 }
 
-async function streamUrl(id, acct) {
+async function streamUrl(id, opts) {
   const s = sourceOf(String(id));
   if (s === 'audius') return audiusStreamUrl(id);
-  if (s === 'jamendo') return jamendoStreamUrl(String(id));
-  return js.streamUrl(id, acct);
+  if (s === 'jamendo') { const u = await jamendoStreamUrl(String(id)); return opts && Number(opts.bitrate) && Number(opts.bitrate) <= 96 ? u.replace(/format=mp32/, 'format=mp31') : u; } // low qualities use Jamendo's smaller file
+  return js.streamUrl(id, opts);
 }
 
 // Another copy of a song from any source (not the one that just failed), found by "title artist".
 const words = (t) => String(t || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, ' ').split(/[^a-z0-9\u0900-\u097f]+/).filter((w) => w.length > 1);
-async function alternate(q, excludeId, acct) {
+async function alternate(q, excludeId, opts) {
   const want = words(q);
   if (!want.length) return null;
   const res = await search(q, 'songs', 1).catch(() => null);
@@ -131,7 +131,7 @@ async function alternate(q, excludeId, acct) {
     const have = new Set(words(s.title + ' ' + (s.artists || []).map((a) => a.name).join(' ')));
     const hit = want.filter((w) => have.has(w)).length;
     if (hit / want.length < 0.6) continue;
-    try { return { id: s.id, url: await streamUrl(s.id, acct) }; } catch (_) { /* try the next one */ }
+    try { return { id: s.id, url: await streamUrl(s.id, opts) }; } catch (_) { /* try the next one */ }
   }
   return null;
 }

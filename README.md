@@ -86,12 +86,9 @@ AURA opens in an orange-to-black gradient. In **Settings → Appearance** you ca
 
 **AURA account.** The first time AURA opens, it asks you to create an account (name, email, password). It's kept on that device only: the password is stored as a salted PBKDF2 hash, never in plain text. Forgot it? "Reset AURA on this device" removes the account but keeps your library and playlists. Each device (browser, phone app) has its own account.
 
-**JioSaavn account (Profile → JioSaavn account → Sign In).** AURA never asks for your JioSaavn password. You sign in on JioSaavn's own site (phone number and code work), and AURA picks up that sign-in. If JioSaavn reports the account as Pro, songs stream at 320 kbps; otherwise they stay at 128 kbps. JioSaavn has no lossless audio; 320 kbps is its highest quality.
+**Streaming quality (Profile → Streaming quality).** Pick Data saver (48 kbps), Low (96), Normal (128), High (160) or Highest (320). AURA asks the music library for that quality; if a song doesn't come in it, the normal quality plays. Jamendo uses its smaller file for Data saver and Low. YouTube and Audius songs choose their own quality. It applies from the next song.
 
-- **Android app:** tap *Open JioSaavn*; jiosaavn.com opens inside AURA. Sign in there, tap *Done*, and you're connected. Nothing to copy.
-- **Website (Render / your computer):** browsers don't let one site read another's sign-in (an iframe can't do it), so it takes one copy and paste, once per browser: sign in at jiosaavn.com, press F12 → Network → reload → click the first request → Request Headers → copy the `cookie` value, and paste it into AURA. The server keeps it sealed in a token held by your browser.
-
-If you have Pro but AURA shows 128 kbps, open "Show what JioSaavn returned" on the Profile screen and share that list of field names (it contains no values).
+**Theme (Profile → Theme).** Pick a colour theme or make your own, and set a background picture with a blur from 10% to 50%. See "Colour themes" below.
 
 ## Music sources (streaming from several places)
 
@@ -142,8 +139,6 @@ Your library, playlists, loved songs, recently played items and settings are sav
 - `GET /api/charts`: the list of chart sources and their charts
 - `GET /api/charts/:source/:chart`: one chart's ranked songs (`spotify`, `apple`, `youtube`)
 
-- `POST /api/account/connect` `{session}`: checks a JioSaavn sign-in cookie, returns a sealed account token
-- `GET /api/account/status?acct=TOKEN`
 - `GET /api/diagnose`: checks each playback step
 
 
@@ -161,7 +156,7 @@ All routes return JSON. The front end uses them, and you can call them directly.
 | `GET /api/lyrics/:id` | `{ lines, copyright }` |
 | `GET /api/radio/song/:id?n=20` | songs similar to a song |
 | `GET /api/radio/featured?name=&lang=&kind=featured\|artist` | songs from a JioSaavn station |
-| `GET /api/stream/:id` | the audio stream (supports seeking with HTTP Range) |
+| `GET /api/stream/:id[?br=48|96|128|160|320]` | the audio stream (supports seeking with HTTP Range) |
 
 A song looks like `{ id, title, artists:[{id,name,image}], album, albumId, image, duration, year, releaseDate, language, explicit, hasLyrics, label, copyright, url }`.
 

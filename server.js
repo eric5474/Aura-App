@@ -34,42 +34,6 @@ function allowed(req) {
   const a = crypto.createHash('sha256').update(given).digest(), b = crypto.createHash('sha256').update(PASSWORD).digest();
   return crypto.timingSafeEqual(a, b);
 }
-// A JioSaavn sign-in is kept by the browser as a sealed token (only this server can open it),
-// so nothing about the account is stored on the server and it survives restarts.
-const SEAL_KEY = crypto.createHash('sha256').update('aura-account:' + (PASSWORD || crypto.randomBytes(32).toString('hex'))).digest();
-function seal(obj) {
-  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', SEAL_KEY, iv);
-  const body = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
-  return Buffer.concat([iv, c.getAuthTag(), body]).toString('base64url');
-}
-function unseal(tok) {
-  try {
-    const b = Buffer.from(String(tok || ''), 'base64url');
-    const d = crypto.createDecipheriv('aes-256-gcm', SEAL_KEY, b.subarray(0, 12));
-    d.setAuthTag(b.subarray(12, 28));
-    const o = JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8'));
-    if (o.until && o.until < Date.now()) o.pro = false; // Pro ran out
-    return o;
-  } catch (_) { return null; }
-}
-const acctOf = (req, q) => unseal(q.get('acct') || req.headers['x-aura-account']);
-function readJSON(req) {
-  return new Promise((resolve) => {
-    let n = 0; const parts = [];
-    req.on('data', (c) => { n += c.length; if (n < 20000) parts.push(c); });
-    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(parts).toString('utf8') || '{}')); } catch (_) { resolve({}); } });
-  });
-}
-async function accountConnect(req, res) {
-  const b = await readJSON(req);
-  try {
-    const a = await js.accountFromSession(b.session);
-    const until = a.until || 0;
-    return sendJSON(res, 200, { ok: true, name: a.name, email: a.email, pro: a.pro, until, fields: a.pro ? undefined : a.fields,
-      token: seal({ session: a.session, pro: a.pro, until, name: a.name, at: Date.now() }) });
-  } catch (e) { return sendJSON(res, 400, { error: e.message }); }
-}
-
 const PUBLIC = path.join(__dirname, 'public');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -140,15 +104,15 @@ const routes = [
   [/^\/api\/radio\/featured$/, (m, q) => js.featuredRadio(q.get('name'), q.get('lang') || '', q.get('kind') || 'featured', Math.min(50, Number(q.get('n')) || 20))],
 ];
 
-async function stream(req, res, id, retried = false, acct = null, q = '', swapped = false) {
+async function stream(req, res, id, retried = false, opts = null, q = '', swapped = false) {
   // If this copy of the song can't be played, play the same song from another source (q = "title artist").
   const other = async (why) => {
-    const alt = !swapped && q ? await sources.alternate(q, id, acct).catch(() => null) : null;
-    if (alt) return stream(req, res, alt.id, false, acct, q, true);
+    const alt = !swapped && q ? await sources.alternate(q, id, opts).catch(() => null) : null;
+    if (alt) return stream(req, res, alt.id, false, opts, q, true);
     return sendJSON(res, 502, { error: why });
   };
   let url;
-  try { url = await sources.streamUrl(id, acct); } catch (e) { return other(e.message); }
+  try { url = await sources.streamUrl(id, opts); } catch (e) { return other(e.message); }
   const headers = { 'User-Agent': js.UA };
   if (/saavncdn\.com/i.test(url)) Object.assign(headers, SITE_HEADERS); // only JioSaavn's audio servers want the site headers
   if (req.headers.range) headers.Range = req.headers.range;
@@ -159,7 +123,7 @@ async function stream(req, res, id, retried = false, acct = null, q = '', swappe
   catch (e) { if (!res.headersSent && !ac.signal.aborted) await other('Stream unavailable'); return; }
   if ((up.status === 403 || up.status === 410) && !retried) { // signed link expired
     js.forgetStream(id);
-    return stream(req, res, id, true, acct, q, swapped);
+    return stream(req, res, id, true, opts, q, swapped);
   }
   if (up.status >= 400) return other(`Stream unavailable (HTTP ${up.status})`);
   const out = { 'Content-Type': up.headers.get('content-type') || 'audio/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' };
@@ -206,11 +170,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="AURA", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('AURA is private. Enter your AURA password (any username).');
   }
-  if (req.method === 'POST' && u.pathname === '/api/account/connect') return accountConnect(req, res);
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
-  if (u.pathname === '/api/account/status') { const a = acctOf(req, u.searchParams); return sendJSON(res, 200, a ? { signedIn: true, name: a.name, pro: !!a.pro, until: a.until || 0 } : { signedIn: false }); }
   const sm = u.pathname.match(/^\/api\/stream\/([^/]+)$/);
-  if (sm) return stream(req, res, decodeURIComponent(sm[1]), false, acctOf(req, u.searchParams), (u.searchParams.get('q') || '').slice(0, 200));
+  if (sm) return stream(req, res, decodeURIComponent(sm[1]), false, { bitrate: ['48', '96', '128', '160', '320'].includes(u.searchParams.get('br')) ? u.searchParams.get('br') : '' }, (u.searchParams.get('q') || '').slice(0, 200));
   if (u.pathname.startsWith('/api/')) {
     for (const [re, fn] of routes) {
       const m = u.pathname.match(re);
