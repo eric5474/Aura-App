@@ -115,14 +115,19 @@ const routes = [
       const h = {};
       for (const k of ['server', 'x-cache', 'x-amz-cf-pop', 'x-akamai-reference', 'via', 'content-type']) { const v = r.headers.get(k); if (v) h[k] = v; }
       report.audio_headers = h;
-      if (!r.ok) {
+      if (!r.ok && report.with_site_headers_status >= 400) {
         const text = (await r.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
         report.audio_body = text;
         report.likely = /country|region|geo|location/i.test(text) ? 'blocked in this country/region'
           : /expired|signature|token/i.test(text) ? 'stream link rejected (signature/expiry)'
           : 'refused by the audio server; see audio_body';
       }
-      return { ...report, step: 'audio', ok: r.ok };
+      // AURA always sends the site headers, so that's the test that matters; the bare request is only for comparison.
+      const works = report.with_site_headers_status < 400;
+      report.audio_status_without_site_headers = r.status;
+      delete report.audio_status;
+      report.verdict = works ? 'OK: JioSaavn audio works through AURA (a bare request is refused by design, AURA adds the headers)' : 'Refused even with the site headers; see audio_body';
+      return { ...report, step: 'audio', ok: works };
     } catch (e) { return { ...report, ok: false, detail: e.message }; }
   }],
   [/^\/api\/charts$/, async () => ({ sources: charts.catalogue() })],
