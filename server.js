@@ -13,6 +13,7 @@ const path = require('path');
 const { Readable } = require('stream');
 const js = require('./jiosaavn');
 const charts = require('./charts');
+const sources = require('./sources');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -89,8 +90,8 @@ const routes = [
   [/^\/api\/health$/, async () => ({ ok: true, version: 1 })],
   [/^\/api\/streamcheck\/([^/]+)$/, async (m) => {
     try {
-      const url = await js.streamUrl(decodeURIComponent(m[1]));
-      const r = await fetch(url, { headers: { Range: 'bytes=0-1', 'User-Agent': js.UA, ...SITE_HEADERS } });
+      const url = await sources.streamUrl(decodeURIComponent(m[1]));
+      const r = await fetch(url, { headers: { Range: 'bytes=0-1', 'User-Agent': js.UA, ...(/saavncdn\.com/i.test(url) ? SITE_HEADERS : {}) } });
       return r.ok ? { ok: true } : { ok: false, error: `the song’s audio server refused it (HTTP ${r.status}); it may not be licensed where this server runs` };
     } catch (e) { return { ok: false, error: e.message }; }
   }],
@@ -127,7 +128,9 @@ const routes = [
   [/^\/api\/charts$/, async () => ({ sources: charts.catalogue() })],
   [/^\/api\/charts\/([a-z]+)\/([a-z0-9_]+)$/, (m) => charts.chart(m[1], m[2])],
   [/^\/api\/home$/, () => js.home()],
-  [/^\/api\/search$/, (m, q) => js.search(q.get('q'), q.get('type') || 'all', Number(q.get('page')) || 1)],
+  [/^\/api\/search$/, (m, q) => sources.search(q.get('q'), q.get('type') || 'all', Number(q.get('page')) || 1)],
+  [/^\/api\/sources$/, async () => ({ sources: sources.list() })],
+  [/^\/api\/sources\/check$/, (m, q) => sources.check(q.get('q') || 'love')],
   [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],
   [/^\/api\/albums\/([^/]+)$/, (m) => js.album(decodeURIComponent(m[1]))],
   [/^\/api\/artists\/([^/]+)$/, (m) => js.artist(decodeURIComponent(m[1]))],
@@ -139,8 +142,9 @@ const routes = [
 
 async function stream(req, res, id, retried = false, acct = null) {
   let url;
-  try { url = await js.streamUrl(id, acct); } catch (e) { return sendJSON(res, 502, { error: e.message }); }
-  const headers = { 'User-Agent': js.UA, ...SITE_HEADERS };
+  try { url = await sources.streamUrl(id, acct); } catch (e) { return sendJSON(res, 502, { error: e.message }); }
+  const headers = { 'User-Agent': js.UA };
+  if (/saavncdn\.com/i.test(url)) Object.assign(headers, SITE_HEADERS); // only JioSaavn's audio servers want the site headers
   if (req.headers.range) headers.Range = req.headers.range;
   const ac = new AbortController();
   res.on('close', () => ac.abort());

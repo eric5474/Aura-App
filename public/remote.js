@@ -300,7 +300,13 @@ setMedia = function () {
 };
 
 /* ---------------- stations & autoplay ---------------- */
-async function radioFrom(id) { const r = await api('/api/radio/song/' + enc(id)); return r.songs.map(ingSong).filter(Boolean); }
+async function radioFrom(id) {
+  if (/^(au|jm)_/.test(id) && TR[id]) { // songs from the other sources: more by the same artist
+    const r = await api('/api/search?type=songs&q=' + enc(TR[id].artistsText || TR[id].title));
+    return (r.songs || []).map(ingSong).filter((x) => x && x !== id);
+  }
+  const r = await api('/api/radio/song/' + enc(id)); return r.songs.map(ingSong).filter(Boolean);
+}
 extendAutoplay = function () {
   const id = curId();
   if (!id) return false;
@@ -469,11 +475,34 @@ async function resolveChartSong(ct) {
   return (RES[key] = found || 0);
 }
 let chartRun = 0;
+async function resolveChartAlbum(ct) {
+  const key = 'album|' + normT(ct.title) + '|' + normT(ct.artist);
+  if (key in RES) return RES[key];
+  let found = 0;
+  try {
+    const r = await api('/api/search?type=albums&q=' + enc(`${normT(ct.title)} ${normT(ct.artist).split(' ').slice(0, 3).join(' ')}`.trim()));
+    const tt = toks(ct.title), at = toks(ct.artist);
+    for (const al of r.albums || []) {
+      const as = at.size ? overlap(at, toks(((al.artists || []).map((x) => x.name).join(' ')) + ' ' + ((al.artist || {}).name || ''))) : 1;
+      if (overlap(tt, toks(al.title)) >= 0.6 && as > 0) { found = ingAlbum(al); break; }
+    }
+  } catch (e) { return 0; }
+  return (RES[key] = found || 0);
+}
 async function playChart(cid, start, sh) {
   const c = CH[cid]; if (!c) return;
   const run = ++chartRun;
   const first = c.tracks[start] || c.tracks[0];
   toast(`Finding “${first.title}”…`);
+  if (c.kind === 'albums') {
+    const id = await resolveChartAlbum(first);
+    if (run !== chartRun) return;
+    if (!id) return toast(`“${first.title}” isn’t in AURA’s library yet`);
+    try { await ensure.album(id); } catch (e) { return toast(e.message); }
+    const al = AL[id];
+    if (!al.tracks || !al.tracks.length) return toast(`“${first.title}” has no songs to play`);
+    S.shuffle = !!sh; return playList(al.tracks, 0, al.title, { shuffle: !!sh, recent: ['album', id] });
+  }
   const win = c.tracks.slice(start, start + 20);
   const ids = (await Promise.all(win.map(resolveChartSong))).filter(Boolean);
   if (run !== chartRun) return;
@@ -490,7 +519,9 @@ VIEWS.charts = function (sid) {
   if (!n || !CHCAT[src.id]) return banner + loading();
   const cat = CHCAT[src.id];
   const pill = (c) => `<button class="cchart" style="--a:${(src.a + hash(c.id) % 40) % 360};--b:${src.b}" data-go="chart" data-id="${esc(src.id + ':' + c.id)}"><b>${esc(c.name)}</b><span>${esc(c.desc || '')}</span></button>`;
-  return banner + `<p class="muted" style="margin:-8px 0 16px">${esc(cat.blurb)} Tap a chart, then tap a song to play it from AURA’s library.</p><div class="cchart-grid">${cat.charts.map(pill).join('')}</div>`;
+  const groups = [...new Set(cat.charts.map((c) => c.group || 'Charts'))];
+  return banner + `<p class="muted" style="margin:-8px 0 8px">${esc(cat.blurb)} Tap a chart, then tap a song to play it.</p>` +
+    groups.map((g) => { const cs = cat.charts.filter((c) => (c.group || 'Charts') === g); return `<section><div class="shelf-head"><h2>${esc(g)}</h2><span class="sub">${cs.length} charts</span></div><div class="cchart-grid">${cs.map(pill).join('')}</div></section>`; }).join('');
 };
 VIEWS.chart = function (cid) {
   const [sid, id] = String(cid).split(':');
@@ -523,6 +554,26 @@ VIEWS.home = function () {
     shelf('Playlists for You', pls.map((p) => plTile(p))) +
     shelf('Stations for You', stationTiles()) +
     shelf('Artists You Might Like', feedArtists().slice(0, 12).map(artistTile));
+};
+const _renderSidebar = renderSidebar;
+renderSidebar = function () {
+  _renderSidebar();
+  const first = document.querySelector('#sidebar nav.nav-group');
+  if (!first || document.querySelector('#sidebar [data-go="charts"]')) return;
+  const g = document.createElement('nav');
+  g.className = 'nav-group';
+  g.innerHTML = '<h4>Charts</h4>' + CHART_SOURCES.map((x) => `<button class="nav-item" data-go="charts" data-id="${x.id}" data-root="1">${ic('note')}<span>${esc(x.name)}</span></button>`).join('');
+  first.after(g);
+  markActive();
+};
+const _markActive = markActive;
+markActive = function () {
+  _markActive();
+  const r = cur();
+  if (r.name === 'charts' || r.name === 'chart') {
+    const sid = r.name === 'chart' ? String(r.id).split(':')[0] : r.id;
+    document.querySelectorAll('#sidebar [data-go="charts"]').forEach((b) => b.classList.toggle('active', b.dataset.id === sid));
+  }
 };
 VIEWS.new = function () {
   const sub = 'The latest releases, updated every day.';
@@ -745,6 +796,14 @@ extraAccountRows = function () {
   const detail = !pro && JSA.fields && JSA.fields.length ? `<details><summary class="muted" style="font-size:12px;cursor:pointer">Have Pro? Show what JioSaavn returned</summary><p class="js-fields">${esc(JSA.fields.join(', '))}</p></details>` : '';
   return `<div class="acct-row"><span><b>JioSaavn account</b><small${pro || JSA.pro ? '' : ' class="warn"'}>${esc(JSA.name || '')}${JSA.name ? ' · ' : ''}${note}</small>${detail}</span><button class="btn" data-act="js-signout">Sign Out</button></div>`;
 };
+let SRCS = null;
+function sourcesRow() {
+  if (!SRCS) { api('/api/sources').then((r) => { SRCS = r.sources || []; if (cur().name === 'profile') renderView(true); }).catch(() => { SRCS = []; }); return ''; }
+  if (!SRCS.length) return '';
+  return `<div class="acct-row"><span><b>Music sources</b><small>Songs are found and streamed from every source that’s on. If one can’t play a song, another is used.</small></span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${SRCS.map((x) => `<span class="qpill" style="${x.enabled ? '' : 'opacity:.55'}" title="${esc(x.note || '')}">${esc(x.name)}${x.enabled ? '' : ' · off'}</span>`).join('')}</span></div>`;
+}
+const _extraRows = extraAccountRows;
+extraAccountRows = function () { return sourcesRow() + _extraRows(); };
 function jsLoginModal(err = '') {
   if (window.AURA_NATIVE) {
     openModal(mhead('Sign In to JioSaavn') + `<div class="modal-body">

@@ -6,6 +6,7 @@
   'use strict';
   const js = window.JioSaavn;
   const ch = window.AuraCharts;
+  const src = window.AuraSources;
   window.AURA_NATIVE = true;
 
   const num = (v, d) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
@@ -14,7 +15,9 @@
     [/^\/api\/charts$/, async () => ({ sources: ch.catalogue() })],
     [/^\/api\/charts\/([a-z]+)\/([a-z0-9_]+)$/, (m) => ch.chart(m[1], m[2])],
     [/^\/api\/home$/, () => js.home()],
-    [/^\/api\/search$/, (m, q) => js.search(q.get('q'), q.get('type') || 'all', num(q.get('page'), 1))],
+    [/^\/api\/search$/, (m, q) => src.search(q.get('q'), q.get('type') || 'all', num(q.get('page'), 1))],
+    [/^\/api\/sources$/, async () => ({ sources: src.list() })],
+    [/^\/api\/sources\/check$/, (m, q) => src.check(q.get('q') || 'love')],
     [/^\/api\/songs\/([^/]+)$/, (m) => js.songs(decodeURIComponent(m[1]).split(',').slice(0, 50))],
     [/^\/api\/albums\/([^/]+)$/, (m) => js.album(decodeURIComponent(m[1]))],
     [/^\/api\/artists\/([^/]+)$/, (m) => js.artist(decodeURIComponent(m[1]))],
@@ -36,7 +39,7 @@
   // Audio links: the app is served over https, so ask for JioSaavn's CDN over https too.
   window.AURA_STREAM_URL = async function (id) {
     const acct = window.AURA_JS_ACCOUNT ? window.AURA_JS_ACCOUNT() : null; // a JioSaavn Pro sign-in, if any
-    const url = await js.streamUrl(id, acct);
+    const url = await src.streamUrl(id, acct);
     return url.replace(/^http:\/\/([a-z0-9.-]*saavncdn\.com)/i, 'https://$1');
   };
 
