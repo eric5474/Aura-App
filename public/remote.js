@@ -223,12 +223,13 @@ const AE = {
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
     this.track = t; this.playing = true; this.offset = off;
     if (audio.dataset.id !== t.id) {
-      audio.dataset.id = t.id; audio.dataset.retried = ''; this.want = off;
+      audio.dataset.id = t.id; audio.dataset.retried = ''; audio.dataset.swapped = ''; this.want = off;
       if (window.AURA_STREAM_URL) {
         const id = t.id;
         // Start a silent clip inside the tap so Android lets this player start the real song a moment later.
         if (!audio.dataset.unlocked) { audio.dataset.unlocked = '1'; audio.src = SILENT; const p0 = audio.play(); if (p0) p0.catch(() => {}); }
-        window.AURA_STREAM_URL(id).then((u) => {
+        window.AURA_STREAM_URL(id).catch(() => (window.AURA_STREAM_ALT ? window.AURA_STREAM_ALT(id, songQuery(id)) : null)).then((u) => {
+          if (!u) throw new Error('This song isn’t available to stream');
           if (audio.dataset.id !== id) return;
           audio.src = u;
           if (this.playing) audio.play().catch(() => {});
@@ -260,8 +261,18 @@ audio.addEventListener('error', () => {
     const id = t.id, at = audio.currentTime;
     audio.dataset.retried = '1';
     window.JioSaavn.forgetStream(id);
-    window.AURA_STREAM_URL(id).then((u) => { if (audio.dataset.id !== id) return; E.want = at; audio.src = u; if (S.playing) audio.play().catch(() => {}); })
+    window.AURA_STREAM_URL(id, true).then((u) => { if (audio.dataset.id !== id) return; E.want = at; audio.src = u; if (S.playing) audio.play().catch(() => {}); })
       .catch((e) => failed(t, e.message));
+    return;
+  }
+  if (window.AURA_STREAM_ALT && t && !audio.dataset.swapped) { // still failing: play the same song from another source
+    const id = t.id, at = audio.currentTime;
+    audio.dataset.swapped = '1';
+    window.AURA_STREAM_ALT(id, songQuery(id)).then((u) => {
+      if (!u) throw new Error('no other source has it');
+      if (audio.dataset.id !== id) return;
+      E.want = at; audio.src = u; if (S.playing) audio.play().catch(() => {});
+    }).catch(() => { audio.dataset.id = ''; failed(t, 'the audio couldn’t be loaded from any source'); });
     return;
   }
   const code = audio.error ? audio.error.code : 0;
@@ -759,7 +770,9 @@ try { JSA = JSON.parse(localStorage.getItem(JKEY) || 'null'); } catch (e) {}
 const saveJSA = () => { try { JSA ? localStorage.setItem(JKEY, JSON.stringify(JSA)) : localStorage.removeItem(JKEY); } catch (e) {} };
 const isPro = () => !!(JSA && JSA.pro && (!JSA.until || JSA.until > Date.now()));
 window.AURA_JS_ACCOUNT = () => (JSA && window.AURA_NATIVE ? { session: JSA.session, pro: isPro() } : null); // read by the Android glue
-const streamSrc = (id) => '/api/stream/' + enc(id) + (JSA && JSA.token ? '?acct=' + enc(JSA.token) : '');
+const songQuery = (id) => { const t = TR[id]; return t ? (t.title + ' ' + ((t.artistsText || (ARTISTS[t.artist] && ARTISTS[t.artist].name) || ''))).trim() : ''; };
+window.AURA_SONG_QUERY = songQuery;
+const streamSrc = (id) => '/api/stream/' + enc(id) + '?q=' + enc(songQuery(id)) + (JSA && JSA.token ? '&acct=' + enc(JSA.token) : '');
 const JioLogin = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.JioLogin;
 async function jsConnect(cookie) {
   if (window.AURA_NATIVE) return window.JioSaavn.accountFromSession(cookie);
@@ -796,11 +809,11 @@ extraAccountRows = function () {
   const detail = !pro && JSA.fields && JSA.fields.length ? `<details><summary class="muted" style="font-size:12px;cursor:pointer">Have Pro? Show what JioSaavn returned</summary><p class="js-fields">${esc(JSA.fields.join(', '))}</p></details>` : '';
   return `<div class="acct-row"><span><b>JioSaavn account</b><small${pro || JSA.pro ? '' : ' class="warn"'}>${esc(JSA.name || '')}${JSA.name ? ' · ' : ''}${note}</small>${detail}</span><button class="btn" data-act="js-signout">Sign Out</button></div>`;
 };
-let SRCS = null;
+let SRCS = null, BUILD = '';
 function sourcesRow() {
-  if (!SRCS) { api('/api/sources').then((r) => { SRCS = r.sources || []; if (cur().name === 'profile') renderView(true); }).catch(() => { SRCS = []; }); return ''; }
+  if (!SRCS) { api('/api/sources').then((r) => { SRCS = r.sources || []; api('/api/health').then((h) => { BUILD = h.build || ''; if (cur().name === 'profile') renderView(true); }).catch(() => {}); if (cur().name === 'profile') renderView(true); }).catch(() => { SRCS = []; }); return ''; }
   if (!SRCS.length) return '';
-  return `<div class="acct-row"><span><b>Music sources</b><small>Songs are found and streamed from every source that’s on. If one can’t play a song, another is used.</small></span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${SRCS.map((x) => `<span class="qpill" style="${x.enabled ? '' : 'opacity:.55'}" title="${esc(x.note || '')}">${esc(x.name)}${x.enabled ? '' : ' · off'}</span>`).join('')}</span></div>`;
+  return `<div class="acct-row"><span><b>Music sources</b><small>Songs are found and streamed from every source that’s on. If one can’t play a song, another is used.${BUILD ? ' Build ' + esc(BUILD) + '.' : ''}</small></span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${SRCS.map((x) => `<span class="qpill" style="${x.enabled ? '' : 'opacity:.55'}" title="${esc(x.note || '')}">${esc(x.name)}${x.enabled ? '' : ' · off'}</span>`).join('')}</span></div>`;
 }
 const _extraRows = extraAccountRows;
 extraAccountRows = function () { return sourcesRow() + _extraRows(); };

@@ -32,7 +32,7 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
   ok(JSON.stringify(tiles) === JSON.stringify(['Spotify Charts', 'Apple Music Charts', 'YouTube Music Charts']), 'three chart options: ' + tiles.join(', '));
   await pg.waitForTimeout(300); await pg.screenshot({ path: out + '/h1-home.png' });
 
-  for (const [name, expectCharts] of [['Spotify Charts', 21], ['Apple Music Charts', 45], ['YouTube Music Charts', 16]]) {
+  for (const [name, expectCharts] of [['Spotify Charts', 154], ['Apple Music Charts', 159], ['YouTube Music Charts', 16]]) {
     await ev(() => go('home', undefined, true)); await pg.waitForSelector('.csrcs');
     await pg.click(`.csrc:has-text("${name}")`);
     await pg.waitForSelector('.cchart');

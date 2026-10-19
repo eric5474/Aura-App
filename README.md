@@ -102,6 +102,10 @@ AURA finds and streams songs from every source that's switched on, in this order
 
 `AURA_SOURCES` (default `jiosaavn,audius,jamendo`) turns sources on or off. Search results list the main library first, then the others; each song streams from its own source. Check what works from where AURA runs: open `/api/sources/check` (the Profile screen also lists the sources). The big-label chart hits mostly live in the main library; Audius and Jamendo carry independent and Creative Commons music.
 
+If a song won't play from one source (or the stream is refused), AURA looks the same song up in the other sources and plays that copy. YouTube is not used as an audio source: YouTube only allows its own player to play its audio.
+
+`/api/health` shows the running build and how many charts each service has, so you can tell whether a deploy is current.
+
 ## Charts on Home
 
 Each service also has its own category in the sidebar (Spotify Charts, Apple Music Charts, YouTube Music Charts); its page lists all of that service's charts, grouped (Apple: top songs, top albums, top music videos). Home shows Top Picks for You and Recently Played first, then three chart options: **Spotify Charts**, **Apple Music Charts** and **YouTube Music Charts**. Each opens every chart from that service (by country); tapping a chart shows its ranked songs, and tapping a song plays it from AURA's own library (the first 20 songs from the one you tap are queued; songs the library doesn't have are skipped and say so).

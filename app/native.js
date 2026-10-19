@@ -43,6 +43,13 @@
     return url.replace(/^http:\/\/([a-z0-9.-]*saavncdn\.com)/i, 'https://$1');
   };
 
+  // The same song from another source, when this copy won't play.
+  window.AURA_STREAM_ALT = async function (id, q) {
+    const acct = window.AURA_JS_ACCOUNT ? window.AURA_JS_ACCOUNT() : null;
+    const alt = await src.alternate(q, id, acct);
+    return alt ? alt.url.replace(/^http:\/\/([a-z0-9.-]*saavncdn\.com)/i, 'https://$1') : null;
+  };
+
   // Android back button: close what's open, go back a screen, or send the app to the background
   // (so music keeps playing) instead of quitting.
   function setupBackButton() {

@@ -87,7 +87,7 @@ function sendJSON(res, code, body) {
 const SITE_HEADERS = { Referer: 'https://www.jiosaavn.com/', Origin: 'https://www.jiosaavn.com' };
 
 const routes = [
-  [/^\/api\/health$/, async () => ({ ok: true, version: 1 })],
+  [/^\/api\/health$/, async () => ({ ok: true, version: 1, build: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || 'local', charts: charts.catalogue().map((c) => c.id + ':' + c.charts.length).join(' ') })],
   [/^\/api\/streamcheck\/([^/]+)$/, async (m) => {
     try {
       const url = await sources.streamUrl(decodeURIComponent(m[1]));
@@ -140,9 +140,15 @@ const routes = [
   [/^\/api\/radio\/featured$/, (m, q) => js.featuredRadio(q.get('name'), q.get('lang') || '', q.get('kind') || 'featured', Math.min(50, Number(q.get('n')) || 20))],
 ];
 
-async function stream(req, res, id, retried = false, acct = null) {
+async function stream(req, res, id, retried = false, acct = null, q = '', swapped = false) {
+  // If this copy of the song can't be played, play the same song from another source (q = "title artist").
+  const other = async (why) => {
+    const alt = !swapped && q ? await sources.alternate(q, id, acct).catch(() => null) : null;
+    if (alt) return stream(req, res, alt.id, false, acct, q, true);
+    return sendJSON(res, 502, { error: why });
+  };
   let url;
-  try { url = await sources.streamUrl(id, acct); } catch (e) { return sendJSON(res, 502, { error: e.message }); }
+  try { url = await sources.streamUrl(id, acct); } catch (e) { return other(e.message); }
   const headers = { 'User-Agent': js.UA };
   if (/saavncdn\.com/i.test(url)) Object.assign(headers, SITE_HEADERS); // only JioSaavn's audio servers want the site headers
   if (req.headers.range) headers.Range = req.headers.range;
@@ -150,12 +156,12 @@ async function stream(req, res, id, retried = false, acct = null) {
   res.on('close', () => ac.abort());
   let up;
   try { up = await fetch(url, { headers, signal: ac.signal }); }
-  catch (e) { if (!res.headersSent && !ac.signal.aborted) sendJSON(res, 502, { error: 'Stream unavailable' }); return; }
+  catch (e) { if (!res.headersSent && !ac.signal.aborted) await other('Stream unavailable'); return; }
   if ((up.status === 403 || up.status === 410) && !retried) { // signed link expired
     js.forgetStream(id);
-    return stream(req, res, id, true, acct);
+    return stream(req, res, id, true, acct, q, swapped);
   }
-  if (up.status >= 400) return sendJSON(res, 502, { error: `Stream unavailable (HTTP ${up.status})` });
+  if (up.status >= 400) return other(`Stream unavailable (HTTP ${up.status})`);
   const out = { 'Content-Type': up.headers.get('content-type') || 'audio/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' };
   for (const k of ['content-length', 'content-range']) { const v = up.headers.get(k); if (v) out[k] = v; }
   res.writeHead(up.status, out);
@@ -204,7 +210,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   if (u.pathname === '/api/account/status') { const a = acctOf(req, u.searchParams); return sendJSON(res, 200, a ? { signedIn: true, name: a.name, pro: !!a.pro, until: a.until || 0 } : { signedIn: false }); }
   const sm = u.pathname.match(/^\/api\/stream\/([^/]+)$/);
-  if (sm) return stream(req, res, decodeURIComponent(sm[1]), false, acctOf(req, u.searchParams));
+  if (sm) return stream(req, res, decodeURIComponent(sm[1]), false, acctOf(req, u.searchParams), (u.searchParams.get('q') || '').slice(0, 200));
   if (u.pathname.startsWith('/api/')) {
     for (const [re, fn] of routes) {
       const m = u.pathname.match(re);
