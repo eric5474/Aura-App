@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chart Player</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>Top 50 Global</h1>
+    <p id="meta" class="muted">Loading…</p>
+  </div>
+  <button id="play-all" class="pill" type="button">▶ Play all</button>
+</header>
+
+<main>
+  <ol id="list" class="tracks" aria-label="Chart"></ol>
+  <p id="empty" class="muted" hidden>Nothing here yet. Run <code>python sync.py</code> to fill the chart.</p>
+</main>
+
+<!-- YouTube's own player. Kept small but visible, as YouTube's terms require. -->
+<aside id="yt-card" aria-label="YouTube player">
+  <div id="player"></div>
+</aside>
+
+<footer class="bar" aria-label="Player">
+  <div class="now">
+    <div id="now-title" class="now-title">Pick a song</div>
+    <div id="now-artist" class="muted"></div>
+  </div>
+  <div class="controls">
+    <button id="prev" type="button" aria-label="Previous">⏮</button>
+    <button id="toggle" type="button" aria-label="Play" class="main">▶</button>
+    <button id="next" type="button" aria-label="Next">⏭</button>
+  </div>
+  <div class="seek">
+    <span id="t-cur" class="muted">0:00</span>
+    <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek">
+    <span id="t-dur" class="muted">0:00</span>
+  </div>
+</footer>
+
+<div id="toast" role="status" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

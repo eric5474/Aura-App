@@ -1,0 +1,60 @@
+'use strict';
+/* The player page in a real browser, with a fake YouTube IFrame API (youtube.com isn't reachable from the test machine).
+   Start the app first:  CHARTS_DB=/tmp/test.db python app.py   then   AURA_URL=http://127.0.0.1:5055/ node tests/frontend_test.js */
+const { chromium } = require('playwright');
+const BASE = process.env.AURA_URL || 'http://127.0.0.1:5000/';
+(async () => {
+  const b = await chromium.launch();
+  const log = [], fail = [];
+  const ok = (c, m) => (c ? log : fail).push((c ? 'PASS ' : 'FAIL ') + m);
+  const pg = await b.newPage({ viewport: { width: 1100, height: 800 } });
+  pg.on('pageerror', (e) => fail.push('PAGEERROR ' + e.message));
+  await pg.route('https://www.youtube.com/iframe_api', (r) => r.fulfill({ contentType: 'text/javascript', body: `
+    window.__yt = { loads: [], paused: 0, played: 0, seeks: [] };
+    window.YT = { PlayerState: { ENDED: 0, PLAYING: 1, PAUSED: 2 }, Player: function (id, o) {
+      var t = 0, dur = 215, self = this;
+      this.loadVideoById = function (v) { window.__yt.loads.push(v); t = 0; setTimeout(function () { o.events.onStateChange({ data: 1 }); }, 15); };
+      this.playVideo = function () { window.__yt.played++; o.events.onStateChange({ data: 1 }); };
+      this.pauseVideo = function () { window.__yt.paused++; o.events.onStateChange({ data: 2 }); };
+      this.seekTo = function (x) { window.__yt.seeks.push(x); t = x; };
+      this.getCurrentTime = function () { return t; }; this.getDuration = function () { return dur; };
+      window.__setTime = function (x) { t = x; };
+      window.__end = function () { o.events.onStateChange({ data: 0 }); }; window.__err = function () { o.events.onError({ data: 150 }); };
+      setTimeout(function () { o.events.onReady({}); }, 10); } };
+    setTimeout(function () { window.onYouTubeIframeAPIReady(); }, 5);` }));
+  const ev = (f, a) => pg.evaluate(f, a);
+  await pg.goto(BASE); await pg.waitForSelector('.track');
+  const rows = await ev(() => [...document.querySelectorAll('.track')].map((li) => ({ t: li.querySelector('.name').textContent, off: li.classList.contains('off') })));
+  ok(rows.length === 5 && rows[0].t === 'One', 'chart listed in rank order (' + rows.map((r) => r.t).join(', ') + ')');
+  ok(rows[2].off, 'a track with no YouTube match is dimmed');
+  ok(/4 of 5/.test(await ev(() => document.getElementById('meta').textContent)), 'header counts matched songs');
+  await pg.waitForFunction(() => window.YT && document.getElementById('toggle'));
+  await pg.click('.track:nth-child(2)');
+  await pg.waitForFunction(() => window.__yt.loads.length === 1);
+  ok((await ev(() => window.__yt.loads[0])) === 'vid2', 'clicking a track loads its video id');
+  ok((await ev(() => document.getElementById('now-title').textContent)) === 'Two', 'now playing shows the title');
+  ok((await ev(() => document.getElementById('toggle').textContent)) === '⏸', 'button shows Pause while playing');
+  await pg.click('#toggle'); await pg.waitForTimeout(100);
+  ok((await ev(() => window.__yt.paused)) === 1 && (await ev(() => document.getElementById('toggle').textContent)) === '▶', 'Pause pauses');
+  await pg.click('#toggle'); await pg.waitForTimeout(100);
+  ok((await ev(() => window.__yt.played)) === 1, 'Play resumes');
+  await ev(() => window.__end()); await pg.waitForFunction(() => window.__yt.loads.length === 2);
+  ok((await ev(() => window.__yt.loads[1])) === 'vid4', 'when a song ends the next playable one starts (skips the unmatched track)');
+  await pg.click('#next'); await pg.waitForFunction(() => window.__yt.loads.length === 3);
+  ok((await ev(() => window.__yt.loads[2])) === 'vid5', 'Next goes to the next song');
+  await ev(() => window.__setTime(1)); await pg.click('#prev'); await pg.waitForFunction(() => window.__yt.loads.length === 4);
+  ok((await ev(() => window.__yt.loads[3])) === 'vid4', 'Previous (early in a song) goes back one');
+  await ev(() => window.__setTime(30)); await pg.click('#prev'); await pg.waitForTimeout(100);
+  ok((await ev(() => window.__yt.seeks.includes(0))) && (await ev(() => window.__yt.loads.length)) === 4, 'Previous (late in a song) restarts it');
+  await ev(() => window.__err()); await pg.waitForFunction(() => window.__yt.loads.length === 5);
+  ok((await ev(() => window.__yt.loads[4])) === 'vid5', 'a video that can’t play is skipped');
+  ok(await ev(() => document.querySelector('.track:nth-child(4) .tag').textContent === 'can’t play'), 'and marked');
+  await ev(() => window.__end()); await pg.waitForTimeout(400);
+  ok((await ev(() => window.__yt.loads.length)) === 5 && (await ev(() => document.getElementById('toggle').textContent)) === '▶', 'after the last song it stops');
+  ok(await ev(() => { const r = document.getElementById('yt-card').getBoundingClientRect(); return r.width >= 160 && r.height >= 160 && r.bottom <= innerHeight; }), 'the YouTube player stays visible');
+  await pg.setViewportSize({ width: 390, height: 800 });
+  ok(await ev(() => document.documentElement.scrollWidth <= innerWidth), 'no sideways scroll on a phone');
+  await pg.screenshot({ path: process.argv[2] ? process.argv[2] + '/chartplayer.png' : '/tmp/claude-0/chartplayer.png' });
+  console.log(log.join('\n')); if (fail.length) { console.log(fail.join('\n')); process.exitCode = 1; } else console.log('\nAll checks passed');
+  await b.close();
+})();
