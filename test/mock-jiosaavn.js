@@ -134,7 +134,7 @@ http.createServer((req, res) => {
     return res.end(buf);
   }
   // chart sources (stand-ins for kworb.net and Apple's chart feed; shapes follow what those sites publish)
-  const chartSongs = [4, 7, 'x', 2, 11, 5].map((n, i) => (n === 'x' ? { title: 'Nonexistent Tune', artist: 'Nobody Known', id: 'zz' } : { title: `Mock Song ${n} & Friends`, artist: ARTISTS[(n - 1) % 4].name, id: 'sg' + (n - 1) }));
+  const chartSongs = [4, 7, 'x', 2, 11, 5, 'au', 'jm'].map((n, i) => (n === 'x' ? { title: 'Nonexistent Tune', artist: 'Nobody Known', id: 'zz' } : n === 'au' ? { title: 'Indie Dream', artist: 'Luna Waves', id: 'au' } : n === 'jm' ? { title: 'Creative Commons Song', artist: 'Open Band', id: 'jm' } : { title: `Mock Song ${n} & Friends`, artist: ARTISTS[(n - 1) % 4].name, id: 'sg' + (n - 1) }));
   if (u.pathname.startsWith('/kworb/spotify/country/')) {
     const rows = chartSongs.map((t, i) => `<tr><td>${i + 1}</td><td class="mp">=</td><td class="text"><div><a href="../artist/${i}.html">${t.artist}</a> - <a href="../track/${String(i).padStart(22, 'a')}.html">${t.title.replace(/&/g, '&amp;')}</a></div></td><td>9</td></tr>`).join('');
     res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(`<html><body><h1>Spotify Daily Chart</h1><table><tr><th>Pos</th><th>P+</th><th>Artist and Title</th></tr>${rows}</table></body></html>`);
@@ -144,9 +144,29 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     return res.end(`<html><body><h2>Overall</h2><table><tr><td>1</td><td><a href="video/gamegamegam.html">Some Gameplay Video</a></td></tr></table><h2>Music</h2><table>${rows}</table></body></html>`);
   }
+  if (u.pathname.startsWith('/apple/api/v2/') && /albums\.json$/.test(u.pathname)) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ feed: { title: 'Top Albums', country: 'us', results: [1, 2, 3].map((k) => ({ id: String(900 + k), name: `Mock Album ${k + 1}`, artistName: ARTISTS[k].name, artworkUrl100: `${ORIGIN}/img/apal${k}/100x100bb.jpg`, kind: 'albums' })) } }));
+  }
   if (u.pathname.startsWith('/apple/api/v2/')) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ feed: { title: 'Top Songs', country: 'us', results: chartSongs.map((t, i) => ({ id: String(100 + i), name: t.title, artistName: t.artist, artworkUrl100: `${ORIGIN}/img/ap${i}/100x100bb.jpg`, kind: 'songs' })) } }));
+  }
+  // Audius and Jamendo stand-ins (response shapes as those APIs publish them)
+  if (u.pathname === '/audius/v1/tracks/search') {
+    const q = u.searchParams.get('query') || '';
+    const data = /indie|luna|dream/i.test(q) ? [{ id: 'A1', title: 'Indie Dream', user: { name: 'Luna Waves', handle: 'luna' }, duration: 7, artwork: { '150x150': image('au1'), '480x480': image('au1') }, permalink: '/luna/indie-dream', is_streamable: true, release_date: '2024-05-01', play_count: 12 }] : [];
+    res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ data }));
+  }
+  if (/^\/audius\/v1\/tracks\/[^/]+\/stream$/.test(u.pathname)) {
+    if (u.searchParams.get('app_name') !== 'AURA') { res.writeHead(400); return res.end(); }
+    res.writeHead(302, { Location: `${ORIGIN}/audio/3.wav?token=abc` }); return res.end();
+  }
+  if (u.pathname === '/jamendo/tracks/') {
+    const q = u.searchParams.get('search') || '';
+    const results = u.searchParams.get('client_id') === 'test' && /creative|open band|commons|free album/i.test(q)
+      ? [{ id: 'J9', name: 'Creative Commons Song', artist_name: 'Open Band', album_name: 'Free Album', image: image('jm9'), duration: 8, audio: `${ORIGIN}/audio/4.wav?token=abc`, shareurl: 'https://www.jamendo.com/track/9', releasedate: '2023-01-01' }] : [];
+    res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ headers: { status: 'success' }, results }));
   }
   if (u.pathname.startsWith('/img/')) {
     const h = [...u.pathname].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);

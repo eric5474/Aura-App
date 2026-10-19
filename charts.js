@@ -12,6 +12,7 @@ const KWORB = (CENV.AURA_CHARTS_KWORB || 'https://kworb.net').replace(/\/$/, '')
 const APPLE = (CENV.AURA_CHARTS_APPLE || 'https://rss.marketingtools.apple.com').replace(/\/$/, '');
 const CUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const LIMIT = 50;
+const APPLE_LIMIT = 100; // Apple's own lists are Top 100
 const CTTL = 30 * 60 * 1000;
 const ccache = new Map();
 
@@ -30,17 +31,21 @@ const SOURCES = [
   {
     id: 'spotify', name: 'Spotify Charts', blurb: 'The most streamed songs on Spotify, by country.',
     charts: [
-      ...SPOTIFY_PLACES.map(([c, n]) => ({ id: `${c}_daily`, name: `Top Songs · ${n}`, desc: 'Daily' })),
-      ...SPOTIFY_PLACES.slice(0, 5).map(([c, n]) => ({ id: `${c}_weekly`, name: `Top Songs · ${n}`, desc: 'Weekly' })),
+      ...SPOTIFY_PLACES.map(([c, n]) => ({ id: `${c}_daily`, name: `Top Songs · ${n}`, desc: 'Daily', group: 'Daily charts', kind: 'songs' })),
+      ...SPOTIFY_PLACES.slice(0, 5).map(([c, n]) => ({ id: `${c}_weekly`, name: `Top Songs · ${n}`, desc: 'Weekly', group: 'Weekly charts', kind: 'songs' })),
     ],
   },
   {
-    id: 'apple', name: 'Apple Music Charts', blurb: 'The most played songs on Apple Music, by country.',
-    charts: APPLE_PLACES.map(([c, n]) => ({ id: c, name: `Most Played · ${n}`, desc: 'Apple Music' })),
+    id: 'apple', name: 'Apple Music Charts', blurb: 'The most played songs, albums and music videos on Apple Music, by country.',
+    charts: [
+      ...APPLE_PLACES.map(([c, n]) => ({ id: c, name: `Top Songs · ${n}`, desc: 'Most played', group: 'Top songs', kind: 'songs' })),
+      ...APPLE_PLACES.map(([c, n]) => ({ id: `${c}_albums`, name: `Top Albums · ${n}`, desc: 'Most played', group: 'Top albums', kind: 'albums' })),
+      ...APPLE_PLACES.map(([c, n]) => ({ id: `${c}_videos`, name: `Top Music Videos · ${n}`, desc: 'Most played', group: 'Top music videos', kind: 'songs' })),
+    ],
   },
   {
     id: 'youtube', name: 'YouTube Music Charts', blurb: 'Music videos trending on YouTube, by country.',
-    charts: YOUTUBE_PLACES.map(([c, n]) => ({ id: c, name: `Trending · ${n}`, desc: 'Music videos' })),
+    charts: YOUTUBE_PLACES.map(([c, n]) => ({ id: c, name: `Trending · ${n}`, desc: 'Music videos', group: 'Trending music videos', kind: 'songs' })),
   },
 ];
 const catalogue = () => SOURCES.map((s) => ({ id: s.id, name: s.name, blurb: s.blurb, charts: s.charts.map((c) => ({ ...c })) }));
@@ -115,11 +120,11 @@ function parseYouTube(html) {
   return out;
 }
 
-function parseApple(text) {
+function parseApple(text, limit = LIMIT) {
   let j;
   try { j = JSON.parse(text); } catch (_) { throw new Error('Apple Music’s chart came back in an unexpected form'); }
   const res = (j.feed && j.feed.results) || [];
-  return res.slice(0, LIMIT).map((r) => ({
+  return res.slice(0, limit).map((r) => ({
     title: cdec(r.name), artist: cdec(r.artistName), id: String(r.id || ''),
     image: r.artworkUrl100 ? String(r.artworkUrl100).replace(/\/\d+x\d+(bb)?\.(jpg|png)$/i, '/300x300bb.jpg') : '',
   })).filter((r) => r.title);
@@ -135,10 +140,14 @@ async function chart(source, id) {
   if (hit && hit.exp > Date.now()) return hit.v;
   let tracks;
   if (source === 'spotify') tracks = parseSpotify(await getText(`${KWORB}/spotify/country/${id}.html`));
-  else if (source === 'apple') tracks = parseApple(await getText(`${APPLE}/api/v2/${id}/music/most-played/${LIMIT}/songs.json`));
+  else if (source === 'apple') {
+    const [cc, what] = id.split('_'); // 'in' | 'in_albums' | 'in_videos'
+    const feed = what === 'albums' ? 'albums' : what === 'videos' ? 'music-videos' : 'songs';
+    tracks = parseApple(await getText(`${APPLE}/api/v2/${cc}/music/most-played/${APPLE_LIMIT}/${feed}.json`), APPLE_LIMIT);
+  }
   else tracks = parseYouTube(await getText(id === 'world' ? `${KWORB}/youtube/trending.html` : `${KWORB}/youtube/trending/${id}.html`));
   if (!tracks.length) throw new Error('This chart is empty right now. Try again later');
-  const v = { source, id, title: meta.name, desc: meta.desc, sourceName: src.name, tracks: tracks.map((t, i) => ({ rank: i + 1, ...t })) };
+  const v = { source, id, title: meta.name, desc: meta.desc, kind: meta.kind || 'songs', sourceName: src.name, tracks: tracks.map((t, i) => ({ rank: i + 1, ...t })) };
   ccache.set(key, { v, exp: Date.now() + CTTL });
   return v;
 }

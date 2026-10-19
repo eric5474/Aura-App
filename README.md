@@ -90,9 +90,21 @@ npm run android:apk        # APK at android/app/build/outputs/apk/debug/app-debu
 
 If you have Pro but AURA shows 128 kbps, open "Show what JioSaavn returned" on the Profile screen and share that list of field names (it contains no values).
 
+## Music sources (streaming from several places)
+
+AURA finds and streams songs from every source that's switched on, in this order, so a chart song missing from one is found in another:
+
+| Source | What it gives | Setup |
+|---|---|---|
+| AURA library | The main catalogue (JioSaavn, hidden behind AURA's name) | none |
+| Audius | Free full-length songs from independent artists | none |
+| Jamendo | Free Creative Commons songs | a free client id: create an app at devportal.jamendo.com, then set `AURA_JAMENDO_CLIENT_ID` (on Render: Environment tab). For the Android app, add it as a GitHub repository secret named `AURA_JAMENDO_CLIENT_ID`. |
+
+`AURA_SOURCES` (default `jiosaavn,audius,jamendo`) turns sources on or off. Search results list the main library first, then the others; each song streams from its own source. Check what works from where AURA runs: open `/api/sources/check` (the Profile screen also lists the sources). The big-label chart hits mostly live in the main library; Audius and Jamendo carry independent and Creative Commons music.
+
 ## Charts on Home
 
-Home shows Top Picks for You and Recently Played first, then three chart options: **Spotify Charts**, **Apple Music Charts** and **YouTube Music Charts**. Each opens every chart from that service (by country); tapping a chart shows its ranked songs, and tapping a song plays it from AURA's own library (the first 20 songs from the one you tap are queued; songs the library doesn't have are skipped and say so).
+Each service also has its own category in the sidebar (Spotify Charts, Apple Music Charts, YouTube Music Charts); its page lists all of that service's charts, grouped (Apple: top songs, top albums, top music videos). Home shows Top Picks for You and Recently Played first, then three chart options: **Spotify Charts**, **Apple Music Charts** and **YouTube Music Charts**. Each opens every chart from that service (by country); tapping a chart shows its ranked songs, and tapping a song plays it from AURA's own library (the first 20 songs from the one you tap are queued; songs the library doesn't have are skipped and say so).
 
 Where the lists come from (they give rank, title and artist only):
 - **Spotify:** kworb.net's public copies of Spotify's daily and weekly country charts (Spotify's own charts need a login).
@@ -119,6 +131,7 @@ Your library, playlists, loved songs, recently played items and settings are sav
 
 ## Backend API
 
+- `GET /api/sources`, `GET /api/sources/check`: the music sources and a working check
 - `GET /api/charts`: the list of chart sources and their charts
 - `GET /api/charts/:source/:chart`: one chart's ranked songs (`spotify`, `apple`, `youtube`)
 
