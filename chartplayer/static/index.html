@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Chart Player</title>
+<meta name="theme-color" content="#d9480f">
 <link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
 </head>
 <body>
 <header class="top">
@@ -12,7 +14,10 @@
     <h1>Top 50 Global</h1>
     <p id="meta" class="muted">Loading…</p>
   </div>
-  <button id="play-all" class="pill" type="button">▶ Play all</button>
+  <div class="btns">
+    <button id="theme-btn" class="pill ghost" type="button" aria-haspopup="dialog" aria-controls="theme-panel">🎨 Theme</button>
+    <button id="play-all" class="pill" type="button">▶ Play all</button>
+  </div>
 </header>
 
 <main>
@@ -42,7 +47,27 @@
   </div>
 </footer>
 
+<div id="veil" hidden></div>
+<aside id="theme-panel" role="dialog" aria-label="Theme" aria-hidden="true">
+  <header><h2>Theme</h2><button class="x" id="theme-close" type="button" aria-label="Close">×</button></header>
+  <h3>Presets</h3>
+  <div class="swatches" id="swatches"></div>
+  <h3>Make your own</h3>
+  <div class="fields">
+    <label>Gradient start <input type="color" id="th-c1" aria-label="Gradient start colour"></label>
+    <label>Gradient end <input type="color" id="th-c2" aria-label="Gradient end colour"></label>
+    <label>Accent <input type="color" id="th-accent" aria-label="Accent colour"></label>
+    <label>Angle <input type="range" id="th-angle" min="0" max="360" step="5" aria-label="Gradient angle"><span id="th-angle-v" class="muted"></span></label>
+  </div>
+  <div class="row">
+    <button class="pill ghost" id="th-swap" type="button">⇄ Swap colours</button>
+    <button class="pill ghost" id="th-random" type="button">🎲 Surprise me</button>
+    <button class="pill ghost" id="th-reset" type="button">Reset to orange &amp; black</button>
+  </div>
+</aside>
+
 <div id="toast" role="status" hidden></div>
+<script src="theme-ui.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
