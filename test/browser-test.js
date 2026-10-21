@@ -15,7 +15,7 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
   pg.on('console', (m) => { if (m.type() === 'error' && !/fonts|ERR_TUNNEL|ERR_CONNECTION/.test(m.text())) fail.push('console ' + m.text()); });
   const ev = (f, a) => pg.evaluate(f, a);
   // already signed in to AURA (the sign-in screen has its own test: test/account-test.js)
-  await pg.addInitScript(() => { try { localStorage.setItem('aura-account-v1', JSON.stringify({ name: 'Tester', email: 't@t.com', salt: 's', alg: 'pbkdf2', hash: 'x' })); localStorage.setItem('aura-session-v1', JSON.stringify({ email: 't@t.com' })); } catch (e) {} });
+  await pg.addInitScript(() => { try { localStorage.setItem('aura-home-v1', 'apple'); localStorage.setItem('aura-account-v1', JSON.stringify({ name: 'Tester', email: 't@t.com', salt: 's', alg: 'pbkdf2', hash: 'x' })); localStorage.setItem('aura-session-v1', JSON.stringify({ email: 't@t.com' })); } catch (e) {} });
 
   await pg.goto(BASE);
   await pg.waitForSelector('text=Top Picks for You', { timeout: 8000 });
@@ -96,7 +96,7 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
 
   const ph = await b.newPage({ viewport: { width: 390, height: 844 }, colorScheme: 'light' });
   ph.on('pageerror', (e) => fail.push('PHONE ' + e.message));
-  await ph.goto(BASE); await ph.waitForSelector('text=Top Picks for You'); await ph.waitForTimeout(400);
+  await ph.addInitScript(() => { try { localStorage.setItem('aura-home-v1', 'apple'); } catch (e) {} }); await ph.goto(BASE); await ph.waitForSelector('text=Top Picks for You'); await ph.waitForTimeout(400);
   await ph.screenshot({ path: out + '/8-phone.png' });
   ok(!(await ph.evaluate(() => document.documentElement.scrollWidth > innerWidth)), 'no sideways scroll on phone');
 

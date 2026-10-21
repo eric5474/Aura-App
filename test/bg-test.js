@@ -10,7 +10,7 @@ const out = process.argv[2] || '/tmp/claude-0';
   const ok = (c, m) => (c ? log : fail).push((c ? 'PASS ' : 'FAIL ') + m);
   const pg = await b.newPage({ viewport: { width: 1360, height: 900 } });
   pg.on('pageerror', (e) => fail.push('PAGEERROR ' + e.message));
-  await pg.addInitScript(() => { try { if (!localStorage.getItem('aura-account-v1')) { localStorage.setItem('aura-account-v1', JSON.stringify({ name: 'Tester', email: 't@t.com', salt: 's', alg: 'pbkdf2', hash: 'x' })); localStorage.setItem('aura-session-v1', JSON.stringify({ email: 't@t.com' })); } } catch (e) {} });
+  await pg.addInitScript(() => { try { localStorage.setItem('aura-home-v1', 'apple'); if (!localStorage.getItem('aura-account-v1')) { localStorage.setItem('aura-account-v1', JSON.stringify({ name: 'Tester', email: 't@t.com', salt: 's', alg: 'pbkdf2', hash: 'x' })); localStorage.setItem('aura-session-v1', JSON.stringify({ email: 't@t.com' })); } } catch (e) {} });
   const ev = (f, a) => pg.evaluate(f, a);
   const css = (v) => ev((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), v);
   await pg.goto(BASE); await pg.waitForSelector('text=Top Picks for You', { timeout: 8000 });

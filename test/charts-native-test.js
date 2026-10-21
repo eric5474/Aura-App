@@ -8,7 +8,7 @@ const out = process.argv[2] || '/tmp/claude-0';
   const ok = (c, m) => (c ? log : fail).push((c ? 'PASS ' : 'FAIL ') + m);
   const pg = await b.newPage({ viewport: { width: 1360, height: 900 } });
   pg.on('pageerror', (e) => fail.push('PAGEERROR ' + e.message));
-  await pg.addInitScript(() => { try { localStorage.setItem('aura-account-v1', JSON.stringify({ name: 'T', email: 't@t.com', salt: 's', alg: 'pbkdf2', hash: 'x' })); localStorage.setItem('aura-session-v1', JSON.stringify({ email: 't@t.com' })); } catch (e) {} });
+  await pg.addInitScript(() => { try { localStorage.setItem('aura-home-v1', 'apple'); localStorage.setItem('aura-account-v1', JSON.stringify({ name: 'T', email: 't@t.com', salt: 's', alg: 'pbkdf2', hash: 'x' })); localStorage.setItem('aura-session-v1', JSON.stringify({ email: 't@t.com' })); } catch (e) {} });
   await pg.goto(BASE); await pg.waitForSelector('text=Top Picks for You', { timeout: 8000 });
   const cat = await pg.evaluate(() => fetch('/api/charts').then((r) => r.json()));
   for (const [sid, cls] of [['spotify', 'cp-spotify'], ['apple', 'cp-apple'], ['youtube', 'cp-youtube']]) {
