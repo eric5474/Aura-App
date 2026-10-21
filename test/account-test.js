@@ -15,6 +15,7 @@ const BASE = process.env.AURA_URL || 'http://127.0.0.1:3000/';
   const ev = (f, a) => pg.evaluate(f, a);
   const authErr = () => ev(() => (document.querySelector('#auth .auth-err') || {}).textContent || '');
 
+  await pg.addInitScript(() => { try { localStorage.setItem('aura-home-v1', 'apple'); } catch (e) {} });
   await pg.goto(BASE);
   await pg.waitForSelector('#auth:not([hidden]) #auth-up');
   ok(true, 'first launch shows Create Account');

@@ -608,6 +608,121 @@ VIEWS.home = function () {
     shelf('Stations for You', stationTiles()) +
     shelf('Artists You Might Like', feedArtists().slice(0, 12).map(artistTile));
 };
+
+/* ---------------- Home screens: Spotify-style (default) and Apple Music-style, and a home page per chart service ---------------- */
+let HSTYLE = 'spotify';
+try { HSTYLE = localStorage.getItem('aura-home-v1') === 'apple' ? 'apple' : 'spotify'; } catch (_) {}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-home-style]');
+  if (!b) return;
+  HSTYLE = b.dataset.homeStyle === 'apple' ? 'apple' : 'spotify';
+  try { localStorage.setItem('aura-home-v1', HSTYLE); } catch (_) {}
+  renderView(true);
+});
+const hsSwitch = () => `<div class="hs-switch" role="group" aria-label="Home screen style"><button data-home-style="spotify" class="${HSTYLE === 'spotify' ? 'on' : ''}">Spotify style</button><button data-home-style="apple" class="${HSTYLE === 'apple' ? 'on' : ''}">Apple Music style</button></div>`;
+const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'Good evening' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
+const chartHue = (id) => hash(id) % 360;
+const FEAT = { spotify: ['global', 'in', 'us', 'gb', 'de', 'br', 'jp', 'fr', 'au', 'ca', 'mx', 'es'], apple: ['us', 'in', 'gb', 'de', 'fr', 'jp', 'br', 'au', 'ca', 'kr', 'mx', 'es'] };
+const chartTile = (sid, c, label, img) => {
+  const place = placeOf(c);
+  return `<button class="sp-ctile" data-go="chart" data-id="${esc(sid + ':' + c.id)}"><span class="sp-cover ${img ? 'has-img' : ''}" style="--h:${chartHue(c.id)}">${img ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<b>${esc(label)}</b><i>${esc(place)}</i></span><span class="sp-t">${esc(c.name)}</span><span class="sp-s">${esc(c.desc || '')}</span></button>`;
+};
+const chartShelf = (title, sub, sid, ids, label, imgFor) => {
+  const cat = CHCAT[sid]; if (!cat) return '';
+  const cs = ids.map((id) => cat.charts.find((x) => x.id === id)).filter(Boolean);
+  return cs.length ? `<section><div class="shelf-head"><h2>${esc(title)}</h2>${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</div><div class="sp-chart-row">${cs.map((c) => chartTile(sid, c, label, imgFor && imgFor(c))).join('')}</div></section>` : '';
+};
+const topRows = (cid, n) => {
+  const c = CH[cid]; if (!c) return '';
+  const sid = cid.split(':')[0];
+  return `<div class="cp cp-${esc(sid)}"><div class="cp-list">${c.tracks.slice(0, n).map((t, i) => `<button class="cp-row" data-act="play-chart" data-id="${esc(cid)}" data-i="${i}"><span class="cp-n">${t.rank}</span>${cpCover(t)}<span class="cp-t"><b>${esc(t.title)}</b><small>${esc(t.artist || '')}</small></span><span class="cp-go">${ic('play')}</span></button>`).join('')}</div></div>`;
+};
+const loadCats = () => Promise.all(['spotify', 'apple'].map((sid) => need('chartcat:' + sid, () => api('/api/charts').then((r) => { r.sources.forEach((x) => { CHCAT[x.id] = x; }); }))));
+const loadChart = (cid) => { const [sid, id] = cid.split(':'); return need('chart:' + cid, () => api(`/api/charts/${enc(sid)}/${enc(id)}`).then((r) => { CH[cid] = r; })); };
+const shortcut = (g, id, art, title) => `<button class="sp-short" data-go="${g}" data-id="${esc(id)}">${art}<span><b>${esc(title)}</b></span></button>`;
+function shortcuts() {
+  const out = [];
+  for (const x of S.recent) {
+    if (out.length >= 8) break;
+    if (x.t === 'album' && AL[x.id]) out.push(shortcut('album', x.id, albumArt(x.id, 'mini'), AL[x.id].title));
+    else if (x.t === 'pl') { const p = plById(x.id); if (p) out.push(shortcut('playlist', p.id, plArt(p, 'mini'), p.name)); }
+  }
+  for (const m of mixes()) { if (out.length >= 8) break; out.push(shortcut('playlist', m.id, plArt(m, 'mini'), m.name)); }
+  return out.join('');
+}
+function homeSpotify() {
+  const wait = homeWait('Home'); if (wait) return wait;
+  need('chartcat:spotify', () => api('/api/charts').then((r) => { r.sources.forEach((x) => { CHCAT[x.id] = x; }); }));
+  const mx = mixes(), albums = hFeedRefs('album'), pls = hFeedRefs('playlist').map(plById).filter(Boolean);
+  const sc = shortcuts();
+  return `<div class="sp-home"><div class="sp-top"><div class="sp-chips"><button class="sp-chip on" data-go="home" data-root="1">All</button><button class="sp-chip" data-go="charts" data-id="spotify" data-root="1">Spotify charts</button><button class="sp-chip" data-go="charts" data-id="apple" data-root="1">Apple Music charts</button><button class="sp-chip" data-go="albums" data-root="1">Albums</button></div>${hsSwitch()}</div>` +
+    `<h1 class="sp-hello">${greeting()}</h1>` + (sc ? `<div class="sp-short-grid">${sc}</div>` : '') +
+    chartShelf('Top charts', 'Most streamed right now', 'spotify', ['global_daily', 'in_daily', 'us_daily', 'gb_daily', 'de_daily', 'br_daily', 'jp_daily', 'fr_daily'], 'Top Songs') +
+    shelf('Made for you', mx.map((m) => plTile(m, m.desc)), 'madeforyou') +
+    shelf('Recently played', S.recent.map(recentTile).filter(Boolean)) +
+    shelf('New releases', albums.slice(0, 12).map((id) => albumTile(id)), 'new') +
+    shelf('Popular playlists', pls.map((p) => plTile(p))) +
+    shelf('Popular artists', feedArtists().slice(0, 12).map(artistTile)) +
+    shelf('Stations for you', stationTiles()) + '</div>';
+}
+function homeApple() {
+  const wait = homeWait('Home'); if (wait) return wait;
+  need('chartcat:apple', () => api('/api/charts').then((r) => { r.sources.forEach((x) => { CHCAT[x.id] = x; }); }));
+  const mx = mixes(), albums = hFeedRefs('album'), pls = hFeedRefs('playlist').map(plById).filter(Boolean);
+  const loved = Object.keys(S.love).filter((k) => S.love[k] === 1 && TR[k]).slice(0, 8);
+  const picks = [mx[0] ? heroPl(mx[0], 'Made for you') : pls[0] ? heroPl(pls[0], 'Playlist') : '', albums[0] ? heroAlbum(albums[0], 'New release') : '', heroLive('Live now')].join('');
+  return `<div class="sp-top"><h1 class="page-title" style="margin:0">Home</h1>${hsSwitch()}</div>` + tagline +
+    `<section><div class="shelf-head" style="margin-top:8px"><h2>Top Picks for You</h2></div><div class="heroes">${picks}</div></section>` +
+    shelf('Recently Played', S.recent.map(recentTile).filter(Boolean)) +
+    chartShelf('Top 100 Charts', 'Most played on Apple Music', 'apple', FEAT.apple, 'Top 100') +
+    chartsSection() +
+    shelf('Made for You', mx.map((m) => plTile(m, m.desc)), 'madeforyou') +
+    shelf('New Releases', albums.slice(0, 12).map((id) => albumTile(id)), 'new') +
+    (loved.length ? `<section><div class="shelf-head"><h2>Songs You Love</h2></div><div class="top-songs">${trackList(loved, 'Songs You Love', { art: 1, noAlb: 1 })}</div></section>` : '') +
+    shelf('Playlists for You', pls.map((p) => plTile(p))) +
+    shelf('Stations for You', stationTiles()) +
+    shelf('Artists You Might Like', feedArtists().slice(0, 12).map(artistTile));
+}
+VIEWS.home = function () { return HSTYLE === 'apple' ? homeApple() : homeSpotify(); };
+
+/* The Spotify and Apple Music entries open a home page for that service: its top list up front, then every chart as tiles. */
+const svcPage = {
+  spotify() {
+    const cat = CHCAT.spotify;
+    const hero = `<div class="svc-hero"><div><h1>Charts</h1><p>${esc(cat.blurb)} Tap a chart, then a song to play it.</p></div></div>`;
+    const cid = 'spotify:global_daily', n = loadChart(cid);
+    const top = n === 'err' ? '' : !n || !CH[cid] ? loading() : `<section><div class="shelf-head"><h2>Today’s Top Hits</h2><button class="link" data-go="chart" data-id="${esc(cid)}">See All</button></div>${topRows(cid, 10)}</section>`;
+    const daily = cat.charts.filter((c) => /_daily$/.test(c.id)).map((c) => c.id), weekly = cat.charts.filter((c) => /_weekly$/.test(c.id)).map((c) => c.id);
+    return hero + top + chartShelf('Daily charts', 'Top Songs by country', 'spotify', FEAT.spotify.map((x) => x + '_daily'), 'Top Songs') +
+      chartShelf('Weekly charts', 'Top Songs by country', 'spotify', FEAT.spotify.map((x) => x + '_weekly'), 'Top Songs') +
+      `<section><div class="shelf-head"><h2>All countries</h2><span class="sub">${daily.length} daily · ${weekly.length} weekly</span></div><div class="cchart-grid">${cat.charts.filter((c) => /_daily$/.test(c.id)).map((c) => `<button class="cchart" style="--a:${148 + hash(c.id) % 40};--b:190" data-go="chart" data-id="${esc('spotify:' + c.id)}"><b>${esc(c.name)}</b><span>${esc(c.desc || '')}</span></button>`).join('')}</div></section>`;
+  },
+  apple() {
+    const cat = CHCAT.apple;
+    const hero = `<div class="svc-hero"><div><h1>Top Charts</h1><p>${esc(cat.blurb)}</p></div></div>`;
+    const cid = 'apple:us', n = loadChart(cid), alb = 'apple:us_albums', n2 = loadChart(alb), vid = 'apple:us_videos', n3 = loadChart(vid);
+    const top = n === 'err' ? '' : !n || !CH[cid] ? loading() : `<section><div class="shelf-head"><h2>Top 10 Songs · United States</h2><button class="link" data-go="chart" data-id="${esc(cid)}">See All</button></div>${topRows(cid, 10)}</section>`;
+    const art = (cc) => (c) => { const d = CH['apple:' + c.id]; return d && d.tracks[0] && d.tracks[0].image; };
+    return hero + top +
+      chartShelf('Top Songs', 'Top 100 by country', 'apple', FEAT.apple, 'Top 100', art()) +
+      chartShelf('Top Albums', 'Top 100 by country', 'apple', FEAT.apple.map((x) => x + '_albums'), 'Top 100', art()) +
+      chartShelf('Top Music Videos', 'Top 100 by country', 'apple', FEAT.apple.map((x) => x + '_videos'), 'Top 100', art());
+  },
+};
+const _chartsIndex = VIEWS.charts;
+VIEWS.charts = function (sid) {
+  const src = chartSrc(sid) || CHART_SOURCES[0];
+  if (svcPage[src.id]) {
+    const key = 'chartcat:' + src.id;
+    const n = need(key, () => api('/api/charts').then((r) => { r.sources.forEach((x) => { CHCAT[x.id] = x; }); }));
+    const wrap = (h) => `<div class="svc-${esc(src.id)}">${h}</div>`;
+    if (n === 'err') return errBox(key, 'the charts');
+    if (!n || !CHCAT[src.id]) return loading();
+    return wrap(svcPage[src.id]());
+  }
+  return _chartsIndex(sid);
+};
+
 const _renderSidebar = renderSidebar;
 renderSidebar = function () {
   _renderSidebar();

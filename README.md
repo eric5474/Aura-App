@@ -196,3 +196,6 @@ npx playwright install chromium && node test/browser-test.js   # needs: npm i pl
 
 ### YouTube chart list
 With `AURA_YOUTUBE_API_KEY` set, the YouTube chart list uses YouTube's own most-popular music chart (1 quota unit, cached 3 hours); otherwise it uses kworb's trending page. Only the list is used: nothing plays from YouTube.
+
+### Looks and home screens
+On desktop AURA uses a Spotify-style layout: your library in a card on the left, the main page in a rounded card, and a player bar along the bottom. Home comes in two styles you can switch between at the top of the page: a Spotify-style home (greeting, shortcut grid, shelves) and an Apple Music-style home (Top Picks, Top 100 charts). The Spotify and Apple Music entries in the sidebar each open a home page for that service: its top 10 songs first, then every chart as tiles, with artwork where the public feed has it. These are layout and colour look-alikes built from public charts and AURA's own library; they don't show anyone's personal Spotify or Apple Music account. A "Spotify" colour preset (green on black) is in Profile → Theme.
